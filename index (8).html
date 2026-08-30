@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EVAN accesorios — Inventario y facturación</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Karla:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bone:#FAF7F3; --paper:#FFFFFF; --ink:#241B22; --muted:#7A6F73;
+  --wine:#8C2F44; --wine-soft:#F4E6E9; --sage:#6B7A5A; --brass:#B98A3C;
+  --line:#E7DED7; --danger:#B3261E; --radius:10px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bone);color:var(--ink);font-family:Karla,system-ui,sans-serif;font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:Fraunces,Georgia,serif;font-weight:600;margin:0;letter-spacing:-.01em}
+.mono{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+.hidden{display:none!important}
+button{font-family:inherit;font-size:14px;cursor:pointer;border-radius:8px;border:1px solid transparent;padding:10px 16px;transition:.15s}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--wine);outline-offset:2px}
+.btn{background:var(--wine);color:#fff;font-weight:700}
+.btn:hover{background:#75253789}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-2{background:var(--paper);color:var(--ink);border-color:var(--line);font-weight:500}
+.btn-2:hover{border-color:var(--wine);color:var(--wine)}
+.btn-3{background:transparent;color:var(--muted);border:none;padding:6px 8px}
+.btn-3:hover{color:var(--wine)}
+.btn-sage{background:var(--sage);color:#fff;font-weight:700}
+.btn-sm{padding:6px 11px;font-size:13px}
+input,select,textarea{font-family:inherit;font-size:15px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);width:100%}
+label{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:5px}
+.field{margin-bottom:14px}
+.row{display:flex;gap:12px;flex-wrap:wrap}
+.row>*{flex:1;min-width:130px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:16px}
+.card h3{font-size:19px;margin-bottom:4px}
+.card .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line);font-weight:700}
+td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+.right{text-align:right}
+.tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:3px 8px;border-radius:99px}
+.t-ok{background:#E9EFE3;color:var(--sage)}
+.t-warn{background:#FBF0DC;color:#8A6520}
+.t-bad{background:var(--wine-soft);color:var(--wine)}
+
+/* ---------- pantallas de acceso ---------- */
+.gate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.gate-box{max-width:380px;width:100%;text-align:center}
+.mark{font-family:Fraunces,serif;font-size:34px;letter-spacing:.22em;color:var(--wine);margin-bottom:2px}
+.mark-sub{font-size:11px;letter-spacing:.34em;text-transform:uppercase;color:var(--muted);margin-bottom:32px}
+.rule{height:1px;background:var(--line);margin:26px 0}
+
+/* ---------- shell ---------- */
+header{background:var(--paper);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+.hbar{max-width:1080px;margin:0 auto;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.hmark{font-family:Fraunces,serif;font-size:19px;letter-spacing:.16em;color:var(--wine)}
+.who{font-size:12px;color:var(--muted);text-align:right;line-height:1.3}
+nav{max-width:1080px;margin:0 auto;padding:0 8px;display:flex;gap:2px;overflow-x:auto}
+nav button{background:none;border:none;border-bottom:2px solid transparent;border-radius:0;padding:12px 14px;color:var(--muted);font-weight:500;white-space:nowrap}
+nav button.on{color:var(--wine);border-bottom-color:var(--wine);font-weight:700}
+main{max-width:1080px;margin:0 auto;padding:22px 18px 80px}
+.view-title{font-size:26px;margin-bottom:2px}
+.view-sub{color:var(--muted);font-size:14px;margin-bottom:20px}
+
+/* ---------- buscador con resultados ---------- */
+.search-wrap{position:relative}
+.results{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--paper);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(36,27,34,.10);max-height:280px;overflow-y:auto;z-index:30}
+.results div{padding:11px 13px;cursor:pointer;border-bottom:1px solid var(--line);font-size:14px}
+.results div:last-child{border-bottom:none}
+.results div:hover{background:var(--wine-soft)}
+.results .empty{color:var(--muted);cursor:default}
+.results .empty:hover{background:none}
+.chip{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--wine-soft);border-radius:8px;padding:12px 14px}
+.chip b{font-size:15px}
+.chip small{color:var(--muted);display:block;font-size:12px}
+
+/* ---------- totales ---------- */
+.tot{display:flex;justify-content:space-between;padding:6px 0;font-size:14px}
+.tot span:first-child{color:var(--muted)}
+.tot.grand{border-top:1px solid var(--line);margin-top:8px;padding-top:12px;font-size:20px;font-family:Fraunces,serif;font-weight:600}
+.tot.grand span:first-child{color:var(--ink)}
+.util{color:var(--sage);font-weight:700}
+
+/* ---------- SEÑA: la factura confirmada se ve como una tarjeta de regalo ---------- */
+.tarjeta{position:relative;background:var(--paper);border:2px dashed var(--wine);border-radius:14px;padding:34px 24px 24px;text-align:center;max-width:440px;margin:0 auto}
+.tarjeta::before{content:"";position:absolute;top:14px;left:50%;transform:translateX(-50%);width:15px;height:15px;border-radius:50%;background:var(--bone);border:2px solid var(--wine)}
+.tarjeta .num{font-family:'JetBrains Mono',monospace;font-size:13px;letter-spacing:.18em;color:var(--brass);margin-top:8px}
+.tarjeta .val{font-family:Fraunces,serif;font-size:40px;margin:6px 0 2px}
+.tarjeta .para{color:var(--muted);font-size:14px;margin-bottom:22px}
+.acciones{display:grid;gap:9px}
+
+/* ---------- kpis ---------- */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-bottom:20px}
+.kpi{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+.kpi .l{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px}
+.kpi .v{font-family:Fraunces,serif;font-size:25px;line-height:1.1}
+.kpi .d{font-size:12px;color:var(--muted);margin-top:4px}
+.up{color:var(--sage);font-weight:700}
+.down{color:var(--wine);font-weight:700}
+
+/* ---------- modal ---------- */
+.overlay{position:fixed;inset:0;background:rgba(36,27,34,.45);display:flex;align-items:center;justify-content:center;padding:18px;z-index:50}
+.modal{background:var(--paper);border-radius:var(--radius);padding:24px;max-width:460px;width:100%;max-height:88vh;overflow-y:auto}
+.modal h3{font-size:20px;margin-bottom:16px}
+
+#toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(140%);background:var(--ink);color:#fff;padding:13px 20px;border-radius:8px;font-size:14px;z-index:99;transition:transform .25s;max-width:88vw;text-align:center}
+#toast.on{transform:translateX(-50%) translateY(0)}
+#toast.err{background:var(--danger)}
+
+.muted{color:var(--muted)}
+.empty-state{text-align:center;padding:38px 18px;color:var(--muted);font-size:14px}
+@media(max-width:620px){
+  main{padding:18px 12px 70px}
+  .card{padding:16px}
+  .hide-sm{display:none}
+  td,th{padding:8px 6px;font-size:13px}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<!-- ══════════ PANTALLAS DE ACCESO ══════════ -->
+<div id="s-cargando" class="gate"><div class="gate-box"><div class="mark">EVAN</div><div class="mark-sub">accesorios</div><p class="muted">Abriendo tu sesión…</p></div></div>
+
+<div id="s-login" class="gate hidden"><div class="gate-box">
+  <div class="mark">EVAN</div><div class="mark-sub">accesorios</div>
+  <h1 style="font-size:22px;margin-bottom:8px">Inventario y facturación</h1>
+  <p class="muted" style="margin-bottom:26px">Entra con la cuenta de Google autorizada para la tienda.</p>
+  <button class="btn" style="width:100%;padding:13px" onclick="entrar()">Entrar con Google</button>
+  <div class="rule"></div>
+  <p class="muted" style="font-size:12px">Si tu correo no está registrado, pídele acceso a Jhon.</p>
+</div></div>
+
+<div id="s-denegado" class="gate hidden"><div class="gate-box">
+  <div class="mark">EVAN</div><div class="mark-sub">accesorios</div>
+  <h1 style="font-size:22px;margin-bottom:8px">Este correo no tiene acceso</h1>
+  <p class="muted" id="denegado-msg" style="margin-bottom:24px"></p>
+  <button class="btn-2" onclick="salir()">Probar con otra cuenta</button>
+</div></div>
+
+<!-- ══════════ APLICACIÓN ══════════ -->
+<div id="s-app" class="hidden">
+<header>
+  <div class="hbar">
+    <div><div class="hmark">EVAN</div><div style="font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)">accesorios</div></div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="who hide-sm"><b id="u-nombre"></b><br><span id="u-rol"></span></div>
+      <button class="btn-3" onclick="salir()">Salir</button>
+    </div>
+  </div>
+  <nav>
+    <button data-v="facturar" class="on" onclick="ir('facturar')">Facturar</button>
+    <button data-v="inventario" onclick="ir('inventario')">Inventario</button>
+    <button data-v="productos" onclick="ir('productos')">Productos</button>
+    <button data-v="clientes" onclick="ir('clientes')">Clientes</button>
+    <button data-v="reportes" onclick="ir('reportes')">Reportes</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ─────── FACTURAR ─────── -->
+<section id="v-facturar">
+  <div id="fact-form">
+    <h1 class="view-title">Nuevo pedido</h1>
+    <p class="view-sub">Elige la clienta, arma el pedido y confirma.</p>
+
+    <div class="card">
+      <h3>1 · Clienta</h3>
+      <p class="sub">Busca por nombre, cédula o teléfono.</p>
+      <div id="cli-buscador">
+        <div class="search-wrap">
+          <input id="q-cliente" placeholder="Ej: Maria, 1017… o 3001234567" oninput="buscarClientes()" autocomplete="off">
+          <div id="res-cliente" class="results hidden"></div>
+        </div>
+      </div>
+      <div id="cli-elegida" class="chip hidden">
+        <div><b id="cli-nombre"></b><small id="cli-datos"></small></div>
+        <button class="btn-3" onclick="quitarCliente()">Cambiar</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>2 · Productos</h3>
+      <p class="sub">Busca por código o nombre.</p>
+      <div class="search-wrap" style="margin-bottom:16px">
+        <input id="q-producto" placeholder="Ej: PUL-001 o pulsera" oninput="buscarProductos()" autocomplete="off">
+        <div id="res-producto" class="results hidden"></div>
+      </div>
+      <div id="carrito"></div>
+    </div>
+
+    <div class="card">
+      <h3>3 · Adicionales</h3>
+      <p class="sub">Todo esto es opcional.</p>
+      <div class="row">
+        <div class="field"><label>Descuento</label><input id="i-descuento" type="number" min="0" step="500" value="0" oninput="pintarTotales()"></div>
+        <div class="field"><label>Costo de envío</label><input id="i-envio" type="number" min="0" step="500" value="0" oninput="pintarTotales()"></div>
+      </div>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-size:14px;letter-spacing:0">
+          <input type="checkbox" id="i-tarjeta-on" style="width:auto" onchange="toggleTarjeta()"> Incluir tarjeta personalizada
+        </label>
+      </div>
+      <div id="bloque-tarjeta" class="hidden">
+        <div class="field"><label>Mensaje de la tarjeta</label><textarea id="i-tarjeta-msg" rows="2" placeholder="Feliz cumpleaños, mamá…"></textarea></div>
+        <div class="field"><label>Valor de la tarjeta</label><input id="i-tarjeta-val" type="number" min="0" step="500" value="0" oninput="pintarTotales()"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Método de pago</label>
+          <select id="i-pago"><option>Efectivo</option><option>Nequi</option><option>Daviplata</option><option>Transferencia</option><option>Tarjeta</option><option>Contraentrega</option></select>
+        </div>
+        <div class="field"><label>Notas internas</label><input id="i-notas" placeholder="Opcional"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>4 · Total</h3>
+      <div id="totales" style="margin:14px 0 20px"></div>
+      <button class="btn" id="btn-confirmar" style="width:100%;padding:14px" onclick="confirmarPedido()">Confirmar pedido</button>
+    </div>
+  </div>
+
+  <div id="fact-listo" class="hidden">
+    <div class="tarjeta">
+      <div style="font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--muted)">Pedido confirmado</div>
+      <div class="num" id="ok-num"></div>
+      <div class="val" id="ok-total"></div>
+      <div class="para" id="ok-cliente"></div>
+      <div class="acciones">
+        <button class="btn-sage" onclick="enviarWhatsApp()">Enviar por WhatsApp</button>
+        <button class="btn-2" onclick="descargarPDF()">Descargar el PDF</button>
+        <button class="btn-2" onclick="enviarCorreo()">Enviar por correo</button>
+        <button class="btn-3" onclick="nuevaFactura()">Hacer otro pedido</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────── INVENTARIO ─────── -->
+<section id="v-inventario" class="hidden">
+  <h1 class="view-title">Inventario</h1>
+  <p class="view-sub">Existencias en tiempo real. Rojo es agotado, amarillo es por debajo del mínimo.</p>
+  <div class="kpis" id="inv-kpis"></div>
+  <div class="card">
+    <input id="q-inv" placeholder="Filtrar por código, nombre o categoría" oninput="pintarInventario()" style="margin-bottom:14px">
+    <div style="overflow-x:auto"><table id="tabla-inv"></table></div>
+  </div>
+</section>
+
+<!-- ─────── PRODUCTOS ─────── -->
+<section id="v-productos" class="hidden">
+  <h1 class="view-title">Productos</h1>
+  <p class="view-sub">Crea productos uno por uno o carga el catálogo completo desde un CSV.</p>
+
+  <div class="card">
+    <h3>Producto nuevo</h3>
+    <p class="sub">El código no se puede repetir. Usa un prefijo por tipo: PUL, ARE, CAD.</p>
+    <div class="row">
+      <div class="field"><label>Código</label><input id="p-codigo" placeholder="PUL-001"></div>
+      <div class="field"><label>Nombre</label><input id="p-nombre" placeholder="Pulsera acero dorada"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Categoría</label>
+        <select id="p-categoria"><option>Pulsera</option><option>Arete</option><option>Cadena</option><option>Anillo</option><option>Set</option><option>Tarjeta</option><option>Otro</option></select>
+      </div>
+      <div class="field"><label>Costo</label><input id="p-costo" type="number" min="0" step="500" value="0"></div>
+      <div class="field"><label>Precio de venta</label><input id="p-precio" type="number" min="0" step="500" value="0"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Cantidad inicial</label><input id="p-cant" type="number" min="0" value="0"></div>
+      <div class="field"><label>Stock mínimo</label><input id="p-min" type="number" min="0" value="2"></div>
+    </div>
+    <button class="btn" onclick="crearProducto()">Guardar producto</button>
+  </div>
+
+  <div class="card">
+    <h3>Cargar catálogo por CSV</h3>
+    <p class="sub">Las cantidades se suman como entrada de mercancía. Nunca reemplazan el stock.</p>
+    <div class="field"><input type="file" id="csv-file" accept=".csv,text/csv" onchange="leerArchivoCSV(event)"></div>
+    <div class="field"><label>O pega aquí el contenido</label>
+      <textarea id="csv-texto" rows="5" placeholder="codigo,nombre,categoria,costo,precio_venta,cantidad,stock_minimo"></textarea></div>
+    <button class="btn-2" onclick="revisarCSV()">Revisar antes de cargar</button>
+    <div id="csv-preview" style="margin-top:18px"></div>
+  </div>
+</section>
+
+<!-- ─────── CLIENTES ─────── -->
+<section id="v-clientes" class="hidden">
+  <h1 class="view-title">Clientas</h1>
+  <p class="view-sub">La fecha de cumpleaños es opcional, y es la que después te deja hacer campañas de regalo.</p>
+  <div class="card">
+    <div style="display:flex;gap:10px;margin-bottom:14px">
+      <input id="q-cli-lista" placeholder="Buscar por nombre, cédula o teléfono" oninput="listarClientes()">
+      <button class="btn" style="flex:none" onclick="modalCliente()">Nueva</button>
+    </div>
+    <div style="overflow-x:auto"><table id="tabla-cli"></table></div>
+  </div>
+</section>
+
+<!-- ─────── REPORTES ─────── -->
+<section id="v-reportes" class="hidden">
+  <h1 class="view-title">Reportes</h1>
+  <p class="view-sub">Ventas del mes y comportamiento de los últimos 6 meses.</p>
+  <div class="kpis" id="rep-kpis"></div>
+  <div class="card"><h3>Más vendidos</h3><p class="sub">Últimos 6 meses, por unidades.</p><div style="overflow-x:auto"><table id="tabla-top"></table></div></div>
+  <div class="card"><h3>Menos vendidos</h3><p class="sub">Incluye los que no han tenido ni una sola venta. Ahí está la plata quieta.</p><div style="overflow-x:auto"><table id="tabla-bottom"></table></div></div>
+  <div class="card"><h3>Últimas facturas</h3><div style="overflow-x:auto"><table id="tabla-fac"></table></div></div>
+</section>
+
+</main>
+</div>
+
+<div id="modal-host"></div>
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+/* ══════════════════════════════════════════════════════════
+   1. CONFIGURACIÓN — reemplaza estas dos líneas con tus llaves
+   ══════════════════════════════════════════════════════════ */
+const SUPABASE_URL  = "PEGA_AQUI_TU_PROJECT_URL";
+const SUPABASE_ANON = "PEGA_AQUI_TU_ANON_KEY";
+
+/* ══════════ 2. ESTADO ══════════ */
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+const { jsPDF } = window.jspdf;
+
+let USER = null, PERFIL = null, CONFIG = {};
+let PRODUCTOS = [], CARRITO = [], CLIENTE = null, ULTIMA = null;
+
+const esAdmin = () => PERFIL && PERFIL.rol === 'admin';
+const fmt = n => new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(Number(n)||0);
+const num = n => new Intl.NumberFormat('es-CO').format(Number(n)||0);
+const limpiar = s => (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+const soloDigitos = s => (s||'').replace(/\D/g,'');
+const esc = s => (s??'').toString().replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const hoy = () => new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
+
+function aviso(msg, error){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'on' + (error ? ' err' : '');
+  clearTimeout(t._t); t._t = setTimeout(()=>t.className='', error ? 5200 : 3000);
+}
+function telWhatsApp(tel){
+  let d = soloDigitos(tel);
+  if(d.length === 10 && d.startsWith('3')) d = '57' + d;
+  return d;
+}
+
+/* ══════════ 3. ACCESO ══════════ */
+async function entrar(){
+  const { error } = await sb.auth.signInWithOAuth({
+    provider:'google',
+    options:{ redirectTo: window.location.href.split('#')[0].split('?')[0] }
+  });
+  if(error) aviso('No se pudo abrir Google: ' + error.message, true);
+}
+async function salir(){ await sb.auth.signOut(); location.reload(); }
+
+function pantalla(id){
+  ['s-cargando','s-login','s-denegado','s-app'].forEach(x=>
+    document.getElementById(x).classList.toggle('hidden', x !== id));
+}
+
+async function arrancar(){
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session){ pantalla('s-login'); return; }
+  USER = session.user;
+
+  const { data, error } = await sb.from('usuarios_autorizados')
+    .select('*').eq('email', USER.email).maybeSingle();
+
+  if(error || !data || !data.activo){
+    document.getElementById('denegado-msg').textContent =
+      USER.email + ' no está registrado como usuario de la tienda.';
+    pantalla('s-denegado');
+    await sb.auth.signOut();
+    return;
+  }
+  PERFIL = data;
+  document.getElementById('u-nombre').textContent = data.nombre || USER.email;
+  document.getElementById('u-rol').textContent = data.rol === 'admin' ? 'Administrador' : 'Vendedora';
+  pantalla('s-app');
+  await cargarConfig();
+  await cargarProductos();
+  pintarTotales();
+}
+
+async function cargarConfig(){
+  const { data } = await sb.from('config').select('*');
+  CONFIG = {};
+  (data||[]).forEach(r => CONFIG[r.clave] = r.valor);
+  const vt = Number(CONFIG.valor_tarjeta_default || 0);
+  if(vt > 0) document.getElementById('i-tarjeta-val').value = vt;
+}
+async function cargarProductos(){
+  const { data, error } = await sb.from('productos').select('*').eq('activo', true).order('codigo');
+  if(error){ aviso('No se pudo leer el catálogo: ' + error.message, true); return; }
+  PRODUCTOS = data || [];
+}
+
+/* ══════════ 4. NAVEGACIÓN ══════════ */
+function ir(v){
+  ['facturar','inventario','productos','clientes','reportes'].forEach(x=>
+    document.getElementById('v-'+x).classList.toggle('hidden', x !== v));
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.v === v));
+  window.scrollTo(0,0);
+  if(v === 'inventario'){ cargarProductos().then(pintarInventario); }
+  if(v === 'clientes')  { listarClientes(); }
+  if(v === 'reportes')  { cargarReportes(); }
+}
+
+/* ══════════ 5. FACTURAR — clienta ══════════ */
+let tCli;
+function buscarClientes(){
+  clearTimeout(tCli);
+  const q = document.getElementById('q-cliente').value.trim();
+  const caja = document.getElementById('res-cliente');
+  if(q.length < 2){ caja.classList.add('hidden'); return; }
+  tCli = setTimeout(async ()=>{
+    const d = soloDigitos(q);
+    let filtro = `nombre.ilike.%${q}%`;
+    if(d.length >= 3) filtro += `,cedula.ilike.%${d}%,telefono.ilike.%${d}%`;
+    const { data } = await sb.from('clientes').select('*').or(filtro).limit(6);
+    caja.classList.remove('hidden');
+    if(!data || !data.length){
+      caja.innerHTML = `<div class="empty">Sin coincidencias para “${esc(q)}”.</div>
+        <div onclick="modalCliente('${esc(q)}')"><b style="color:var(--wine)">+ Crear esta clienta</b></div>`;
+      return;
+    }
+    caja.innerHTML = data.map(c=>
+      `<div onclick='elegirCliente(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
+        <b>${esc(c.nombre)}</b><br><span class="muted mono" style="font-size:12px">${esc(c.cedula||'sin cédula')} · ${esc(c.telefono||'sin teléfono')}</span>
+      </div>`).join('') +
+      `<div onclick="modalCliente('${esc(q)}')"><b style="color:var(--wine)">+ Crear una nueva</b></div>`;
+  }, 280);
+}
+function elegirCliente(c){
+  CLIENTE = c;
+  document.getElementById('cli-buscador').classList.add('hidden');
+  document.getElementById('cli-elegida').classList.remove('hidden');
+  document.getElementById('cli-nombre').textContent = c.nombre;
+  document.getElementById('cli-datos').textContent =
+    [c.telefono, c.correo, c.ciudad].filter(Boolean).join(' · ') || 'Sin datos de contacto';
+  document.getElementById('res-cliente').classList.add('hidden');
+}
+function quitarCliente(){
+  CLIENTE = null;
+  document.getElementById('cli-buscador').classList.remove('hidden');
+  document.getElementById('cli-elegida').classList.add('hidden');
+  document.getElementById('q-cliente').value = '';
+}
+
+/* ══════════ 6. FACTURAR — carrito ══════════ */
+function buscarProductos(){
+  const q = limpiar(document.getElementById('q-producto').value.trim());
+  const caja = document.getElementById('res-producto');
+  if(q.length < 2){ caja.classList.add('hidden'); return; }
+  const hits = PRODUCTOS.filter(p =>
+    limpiar(p.codigo).includes(q) || limpiar(p.nombre).includes(q) || limpiar(p.categoria).includes(q)
+  ).slice(0,7);
+  caja.classList.remove('hidden');
+  caja.innerHTML = hits.length ? hits.map(p=>
+    `<div onclick="agregar('${p.id}')">
+      <b>${esc(p.nombre)}</b> <span class="mono muted" style="font-size:12px">${esc(p.codigo)}</span><br>
+      <span style="font-size:12px">${fmt(p.precio_venta)} · <span class="${p.stock_actual<=0?'down':''}">${p.stock_actual} en stock</span></span>
+    </div>`).join('')
+    : '<div class="empty">No hay productos con ese nombre o código.</div>';
+}
+function agregar(id){
+  const p = PRODUCTOS.find(x=>x.id===id);
+  if(!p) return;
+  if(p.stock_actual <= 0){ aviso(p.nombre + ' está agotado. Registra una entrada primero.', true); return; }
+  const y = CARRITO.find(x=>x.producto_id===id);
+  if(y){
+    if(y.cantidad + 1 > p.stock_actual){ aviso('Solo quedan ' + p.stock_actual + ' unidades de ' + p.codigo, true); return; }
+    y.cantidad++;
+  } else {
+    CARRITO.push({ producto_id:id, codigo:p.codigo, nombre:p.nombre,
+                   cantidad:1, precio_unitario:Number(p.precio_venta), costo:Number(p.costo), stock:p.stock_actual });
+  }
+  document.getElementById('q-producto').value = '';
+  document.getElementById('res-producto').classList.add('hidden');
+  pintarTotales();
+}
+function cambiarCant(i, v){
+  const it = CARRITO[i]; const n = parseInt(v);
+  if(isNaN(n) || n < 1){ return; }
+  if(n > it.stock){ aviso('Solo quedan ' + it.stock + ' unidades de ' + it.codigo, true); pintarTotales(); return; }
+  it.cantidad = n; pintarTotales();
+}
+function cambiarPrecio(i, v){ CARRITO[i].precio_unitario = Number(v)||0; pintarTotales(); }
+function quitar(i){ CARRITO.splice(i,1); pintarTotales(); }
+function toggleTarjeta(){
+  const on = document.getElementById('i-tarjeta-on').checked;
+  document.getElementById('bloque-tarjeta').classList.toggle('hidden', !on);
+  if(!on) document.getElementById('i-tarjeta-val').value = 0;
+  pintarTotales();
+}
+
+function calcular(){
+  const sub  = CARRITO.reduce((a,i)=>a + i.cantidad * i.precio_unitario, 0);
+  const cost = CARRITO.reduce((a,i)=>a + i.cantidad * i.costo, 0);
+  const desc = Number(document.getElementById('i-descuento').value)||0;
+  const env  = Number(document.getElementById('i-envio').value)||0;
+  const tarj = document.getElementById('i-tarjeta-on').checked ? (Number(document.getElementById('i-tarjeta-val').value)||0) : 0;
+  const costoTarj = tarj > 0 ? Number(CONFIG.costo_tarjeta||0) : 0;
+  const total = sub - desc + env + tarj;
+  return { sub, desc, env, tarj, total, utilidad: total - (cost + costoTarj) - env };
+}
+function pintarTotales(){
+  const c = document.getElementById('carrito');
+  if(!CARRITO.length){
+    c.innerHTML = '<div class="empty-state">Todavía no hay productos en el pedido.</div>';
+  } else {
+    c.innerHTML = `<div style="overflow-x:auto"><table><thead><tr>
+      <th>Producto</th><th style="width:74px">Cant.</th><th style="width:110px">Precio</th><th class="right">Subtotal</th><th></th>
+      </tr></thead><tbody>` + CARRITO.map((i,ix)=>`<tr>
+        <td><b>${esc(i.nombre)}</b><br><span class="mono muted" style="font-size:11px">${esc(i.codigo)}</span></td>
+        <td><input type="number" min="1" value="${i.cantidad}" onchange="cambiarCant(${ix},this.value)" style="padding:6px"></td>
+        <td><input type="number" min="0" step="500" value="${i.precio_unitario}" onchange="cambiarPrecio(${ix},this.value)" style="padding:6px"></td>
+        <td class="right mono">${fmt(i.cantidad*i.precio_unitario)}</td>
+        <td><button class="btn-3" onclick="quitar(${ix})" title="Quitar">✕</button></td>
+      </tr>`).join('') + '</tbody></table></div>';
+  }
+  const t = calcular();
+  let html = `<div class="tot"><span>Productos</span><span class="mono">${fmt(t.sub)}</span></div>`;
+  if(t.desc) html += `<div class="tot"><span>Descuento</span><span class="mono">− ${fmt(t.desc)}</span></div>`;
+  if(t.env)  html += `<div class="tot"><span>Envío</span><span class="mono">${fmt(t.env)}</span></div>`;
+  if(t.tarj) html += `<div class="tot"><span>Tarjeta personalizada</span><span class="mono">${fmt(t.tarj)}</span></div>`;
+  html += `<div class="tot grand"><span>Total</span><span class="mono">${fmt(t.total)}</span></div>`;
+  if(esAdmin()) html += `<div class="tot" style="margin-top:6px"><span>Utilidad estimada</span><span class="mono util">${fmt(t.utilidad)}</span></div>`;
+  document.getElementById('totales').innerHTML = html;
+}
+
+/* ══════════ 7. CONFIRMAR PEDIDO ══════════ */
+async function confirmarPedido(){
+  if(!CLIENTE){ aviso('Falta elegir la clienta.', true); return; }
+  if(!CARRITO.length){ aviso('El pedido no tiene productos.', true); return; }
+
+  const b = document.getElementById('btn-confirmar');
+  b.disabled = true; b.textContent = 'Guardando…';
+
+  const t = calcular();
+  const { data, error } = await sb.rpc('crear_factura', {
+    p_cliente_id: CLIENTE.id,
+    p_items: CARRITO.map(i=>({ producto_id:i.producto_id, cantidad:i.cantidad, precio_unitario:i.precio_unitario })),
+    p_descuento: t.desc,
+    p_costo_envio: t.env,
+    p_valor_tarjeta: t.tarj,
+    p_mensaje_tarjeta: document.getElementById('i-tarjeta-msg').value || null,
+    p_metodo_pago: document.getElementById('i-pago').value,
+    p_notas: document.getElementById('i-notas').value || null
+  });
+
+  b.disabled = false; b.textContent = 'Confirmar pedido';
+  if(error){ aviso('No se guardó el pedido: ' + error.message, true); return; }
+
+  ULTIMA = {
+    num: data.num_factura, id: data.factura_id, total: data.total,
+    cliente: CLIENTE, items: CARRITO.slice(), ...t,
+    mensaje_tarjeta: document.getElementById('i-tarjeta-msg').value,
+    pago: document.getElementById('i-pago').value, fecha: hoy(), pdf_url: null
+  };
+
+  document.getElementById('ok-num').textContent = ULTIMA.num;
+  document.getElementById('ok-total').textContent = fmt(ULTIMA.total);
+  document.getElementById('ok-cliente').textContent = 'para ' + CLIENTE.nombre;
+  document.getElementById('fact-form').classList.add('hidden');
+  document.getElementById('fact-listo').classList.remove('hidden');
+  window.scrollTo(0,0);
+
+  await cargarProductos();
+  subirPDF();          // en segundo plano, para tener el enlace listo
+}
+
+function nuevaFactura(){
+  CARRITO = []; ULTIMA = null; quitarCliente();
+  ['i-descuento','i-envio','i-tarjeta-val'].forEach(id=>document.getElementById(id).value = 0);
+  document.getElementById('i-tarjeta-msg').value = '';
+  document.getElementById('i-notas').value = '';
+  document.getElementById('i-tarjeta-on').checked = false;
+  toggleTarjeta();
+  document.getElementById('fact-listo').classList.add('hidden');
+  document.getElementById('fact-form').classList.remove('hidden');
+  pintarTotales();
+}
+
+/* ══════════ 8. PDF ══════════ */
+function construirPDF(f){
+  const d = new jsPDF({ unit:'mm', format:'a4' });
+  const W = 210, M = 18;
+  let y = 22;
+
+  d.setFont('helvetica','bold'); d.setFontSize(22); d.setTextColor(140,47,68);
+  d.text('EVAN', M, y);
+  d.setFont('helvetica','normal'); d.setFontSize(8); d.setTextColor(122,111,115);
+  d.text('A C C E S O R I O S', M, y+5);
+
+  d.setFontSize(9); d.setTextColor(36,27,34);
+  d.text('FACTURA DE VENTA', W-M, y-3, {align:'right'});
+  d.setFont('helvetica','bold'); d.setFontSize(13);
+  d.text(f.num, W-M, y+3, {align:'right'});
+  d.setFont('helvetica','normal'); d.setFontSize(9); d.setTextColor(122,111,115);
+  d.text(f.fecha, W-M, y+9, {align:'right'});
+
+  y += 18;
+  d.setDrawColor(231,222,215); d.line(M, y, W-M, y); y += 10;
+
+  d.setFontSize(8); d.setTextColor(122,111,115); d.text('CLIENTA', M, y);
+  d.setFontSize(11); d.setTextColor(36,27,34); d.setFont('helvetica','bold');
+  d.text(f.cliente.nombre, M, y+6);
+  d.setFont('helvetica','normal'); d.setFontSize(9); d.setTextColor(122,111,115);
+  const linea = [f.cliente.cedula && ('CC ' + f.cliente.cedula), f.cliente.telefono, f.cliente.correo].filter(Boolean).join('  ·  ');
+  d.text(linea || '—', M, y+11.5);
+  d.setFontSize(8); d.text('PAGO', W-M, y, {align:'right'});
+  d.setFontSize(10); d.setTextColor(36,27,34); d.text(f.pago || '—', W-M, y+6, {align:'right'});
+
+  y += 22;
+  d.setFillColor(250,247,243); d.rect(M, y-5, W-2*M, 8, 'F');
+  d.setFontSize(8); d.setTextColor(122,111,115);
+  d.text('DESCRIPCIÓN', M+2, y); d.text('CANT', 128, y, {align:'right'});
+  d.text('V. UNIT', 158, y, {align:'right'}); d.text('TOTAL', W-M-2, y, {align:'right'});
+  y += 9;
+
+  d.setTextColor(36,27,34); d.setFontSize(10);
+  f.items.forEach(i=>{
+    if(y > 250){ d.addPage(); y = 25; }
+    d.text(String(i.nombre).substring(0,42), M+2, y);
+    d.setTextColor(150,140,145); d.setFontSize(8);
+    d.text(i.codigo, M+2, y+4);
+    d.setTextColor(36,27,34); d.setFontSize(10);
+    d.text(String(i.cantidad), 128, y, {align:'right'});
+    d.text(num(i.precio_unitario), 158, y, {align:'right'});
+    d.text(num(i.cantidad*i.precio_unitario), W-M-2, y, {align:'right'});
+    y += 11;
+  });
+
+  d.setDrawColor(231,222,215); d.line(120, y, W-M, y); y += 8;
+  const fila = (l,v,neg)=>{ d.setFontSize(9); d.setTextColor(122,111,115); d.text(l, 158, y, {align:'right'});
+    d.setTextColor(36,27,34); d.text((neg?'− ':'') + num(v), W-M-2, y, {align:'right'}); y += 6; };
+  fila('Productos', f.sub);
+  if(f.desc) fila('Descuento', f.desc, true);
+  if(f.env)  fila('Envío', f.env);
+  if(f.tarj) fila('Tarjeta personalizada', f.tarj);
+  y += 3;
+  d.setFont('helvetica','bold'); d.setFontSize(14); d.setTextColor(140,47,68);
+  d.text('TOTAL', 158, y, {align:'right'});
+  d.text('$ ' + num(f.total), W-M-2, y, {align:'right'});
+
+  if(f.mensaje_tarjeta){
+    y += 16; d.setFont('helvetica','normal'); d.setFontSize(8); d.setTextColor(122,111,115);
+    d.text('TARJETA PERSONALIZADA', M, y);
+    d.setFontSize(10); d.setTextColor(36,27,34);
+    d.text(d.splitTextToSize(f.mensaje_tarjeta, 100), M, y+6);
+  }
+
+  d.setFontSize(8); d.setTextColor(150,140,145);
+  d.text(CONFIG.pie_factura || 'Gracias por tu compra.', W/2, 282, {align:'center'});
+  return d;
+}
+function descargarPDF(){
+  if(!ULTIMA) return;
+  construirPDF(ULTIMA).save(ULTIMA.num + '.pdf');
+}
+async function subirPDF(){
+  if(!ULTIMA) return;
+  try{
+    const blob = construirPDF(ULTIMA).output('blob');
+    const ruta = ULTIMA.num + '.pdf';
+    const { error } = await sb.storage.from('facturas').upload(ruta, blob, { contentType:'application/pdf', upsert:true });
+    if(error) throw error;
+    const { data } = sb.storage.from('facturas').getPublicUrl(ruta);
+    ULTIMA.pdf_url = data.publicUrl;
+    await sb.from('facturas').update({ pdf_url: data.publicUrl }).eq('id', ULTIMA.id);
+  }catch(e){
+    console.warn('PDF no subido:', e.message);
+  }
+}
+
+/* ══════════ 9. ENVÍO ══════════ */
+function textoPedido(){
+  const l = [
+    `Hola ${ULTIMA.cliente.nombre}, ¡gracias por tu compra en EVAN accesorios!`, '',
+    `Pedido ${ULTIMA.num}`,
+    ...ULTIMA.items.map(i=>`• ${i.cantidad} × ${i.nombre} — ${fmt(i.cantidad*i.precio_unitario)}`)
+  ];
+  if(ULTIMA.desc) l.push(`Descuento: − ${fmt(ULTIMA.desc)}`);
+  if(ULTIMA.env)  l.push(`Envío: ${fmt(ULTIMA.env)}`);
+  if(ULTIMA.tarj) l.push(`Tarjeta personalizada: ${fmt(ULTIMA.tarj)}`);
+  l.push('', `Total: ${fmt(ULTIMA.total)}`, `Pago: ${ULTIMA.pago}`);
+  if(ULTIMA.pdf_url) l.push('', `Tu factura: ${ULTIMA.pdf_url}`);
+  return l.join('\n');
+}
+function enviarWhatsApp(){
+  if(!ULTIMA) return;
+  const tel = telWhatsApp(ULTIMA.cliente.telefono);
+  if(!tel){ aviso('Esta clienta no tiene teléfono guardado.', true); return; }
+  window.open(`https://wa.me/${tel}?text=${encodeURIComponent(textoPedido())}`, '_blank');
+}
+function enviarCorreo(){
+  if(!ULTIMA) return;
+  if(!ULTIMA.cliente.correo){ aviso('Esta clienta no tiene correo guardado.', true); return; }
+  window.location.href = `mailto:${ULTIMA.cliente.correo}` +
+    `?subject=${encodeURIComponent('Tu pedido EVAN ' + ULTIMA.num)}` +
+    `&body=${encodeURIComponent(textoPedido())}`;
+}
+
+/* ══════════ 10. CLIENTAS ══════════ */
+function modalCliente(precarga, existente){
+  const d = soloDigitos(precarga||'');
+  const c = existente || {};
+  const nombre = c.nombre || (d ? '' : (precarga||''));
+  const ced = c.cedula || (d.length >= 6 ? d : '');
+  const tel = c.telefono || (d.length === 10 ? d : '');
+  document.getElementById('modal-host').innerHTML = `
+  <div class="overlay" onclick="if(event.target===this)cerrarModal()"><div class="modal">
+    <h3>${existente ? 'Editar clienta' : 'Nueva clienta'}</h3>
+    <div class="field"><label>Nombre completo</label><input id="c-nombre" value="${esc(nombre)}"></div>
+    <div class="row">
+      <div class="field"><label>Cédula</label><input id="c-cedula" value="${esc(ced)}"></div>
+      <div class="field"><label>Teléfono</label><input id="c-telefono" value="${esc(tel)}" placeholder="3001234567"></div>
+    </div>
+    <div class="field"><label>Correo</label><input id="c-correo" type="email" value="${esc(c.correo||'')}"></div>
+    <div class="row">
+      <div class="field"><label>Ciudad</label><input id="c-ciudad" value="${esc(c.ciudad||'')}"></div>
+      <div class="field"><label>Cumpleaños</label><input id="c-cumple" type="date" value="${esc(c.fecha_cumpleanos||'')}"></div>
+    </div>
+    <div class="field"><label>Notas</label><input id="c-notas" value="${esc(c.notas||'')}" placeholder="Le gustan los dorados"></div>
+    <div style="display:flex;gap:10px;margin-top:6px">
+      <button class="btn" style="flex:1" onclick="guardarCliente(${existente ? "'"+c.id+"'" : 'null'})">Guardar</button>
+      <button class="btn-2" onclick="cerrarModal()">Cancelar</button>
+    </div>
+  </div></div>`;
+  setTimeout(()=>document.getElementById('c-nombre').focus(), 60);
+}
+function cerrarModal(){ document.getElementById('modal-host').innerHTML = ''; }
+
+async function guardarCliente(id){
+  const c = {
+    nombre: document.getElementById('c-nombre').value.trim(),
+    cedula: soloDigitos(document.getElementById('c-cedula').value) || null,
+    telefono: soloDigitos(document.getElementById('c-telefono').value) || null,
+    correo: document.getElementById('c-correo').value.trim() || null,
+    ciudad: document.getElementById('c-ciudad').value.trim() || null,
+    fecha_cumpleanos: document.getElementById('c-cumple').value || null,
+    notas: document.getElementById('c-notas').value.trim() || null
+  };
+  if(!c.nombre){ aviso('El nombre es obligatorio.', true); return; }
+
+  const q = id ? sb.from('clientes').update(c).eq('id', id).select().single()
+               : sb.from('clientes').insert(c).select().single();
+  const { data, error } = await q;
+  if(error){
+    aviso(error.code === '23505' ? 'Ya existe una clienta con esa cédula.' : error.message, true);
+    return;
+  }
+  cerrarModal();
+  aviso(id ? 'Clienta actualizada' : 'Clienta creada');
+  if(!document.getElementById('v-facturar').classList.contains('hidden') && !id) elegirCliente(data);
+  if(!document.getElementById('v-clientes').classList.contains('hidden')) listarClientes();
+}
+
+async function listarClientes(){
+  const q = document.getElementById('q-cli-lista').value.trim();
+  let sel = sb.from('clientes').select('*').order('created_at',{ascending:false}).limit(50);
+  if(q.length >= 2){
+    const d = soloDigitos(q);
+    let f = `nombre.ilike.%${q}%`;
+    if(d.length >= 3) f += `,cedula.ilike.%${d}%,telefono.ilike.%${d}%`;
+    sel = sb.from('clientes').select('*').or(f).limit(50);
+  }
+  const { data } = await sel;
+  const t = document.getElementById('tabla-cli');
+  if(!data || !data.length){ t.innerHTML = '<tr><td class="empty-state">Todavía no hay clientas registradas.</td></tr>'; return; }
+  t.innerHTML = `<thead><tr><th>Nombre</th><th>Cédula</th><th>Teléfono</th><th class="hide-sm">Ciudad</th><th></th></tr></thead><tbody>` +
+    data.map(c=>`<tr>
+      <td><b>${esc(c.nombre)}</b>${c.correo?`<br><span class="muted" style="font-size:12px">${esc(c.correo)}</span>`:''}</td>
+      <td class="mono">${esc(c.cedula||'—')}</td>
+      <td class="mono">${esc(c.telefono||'—')}</td>
+      <td class="hide-sm">${esc(c.ciudad||'—')}</td>
+      <td class="right"><button class="btn-3" onclick='modalCliente(null, ${JSON.stringify(c).replace(/'/g,"&#39;")})'>Editar</button></td>
+    </tr>`).join('') + '</tbody>';
+}
+
+/* ══════════ 11. PRODUCTOS ══════════ */
+async function crearProducto(){
+  const codigo = document.getElementById('p-codigo').value.trim().toUpperCase();
+  const nombre = document.getElementById('p-nombre').value.trim();
+  if(!codigo || !nombre){ aviso('El código y el nombre son obligatorios.', true); return; }
+  const costo = Number(document.getElementById('p-costo').value)||0;
+  const precio = Number(document.getElementById('p-precio').value)||0;
+  if(precio <= costo) aviso('Ojo: el precio de venta no supera el costo.', true);
+
+  const { error } = await sb.rpc('cargar_producto', {
+    p_codigo: codigo, p_nombre: nombre,
+    p_categoria: document.getElementById('p-categoria').value,
+    p_costo: costo, p_precio: precio,
+    p_cantidad: Number(document.getElementById('p-cant').value)||0,
+    p_stock_minimo: Number(document.getElementById('p-min').value)||0,
+    p_referencia: 'MANUAL'
+  });
+  if(error){ aviso(error.message, true); return; }
+  aviso(nombre + ' guardado');
+  ['p-codigo','p-nombre'].forEach(id=>document.getElementById(id).value = '');
+  ['p-costo','p-precio','p-cant'].forEach(id=>document.getElementById(id).value = 0);
+  await cargarProductos();
+}
+
+function leerArchivoCSV(e){
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = () => { document.getElementById('csv-texto').value = r.result; revisarCSV(); };
+  r.readAsText(f, 'UTF-8');
+}
+function parsearCSV(texto){
+  const filas = []; let fila = [], campo = '', comilla = false;
+  for(let i=0;i<texto.length;i++){
+    const c = texto[i];
+    if(comilla){
+      if(c === '"'){ if(texto[i+1] === '"'){ campo += '"'; i++; } else comilla = false; }
+      else campo += c;
+    } else if(c === '"') comilla = true;
+    else if(c === ',' || c === ';'){ fila.push(campo); campo = ''; }
+    else if(c === '\n'){ fila.push(campo); filas.push(fila); fila = []; campo = ''; }
+    else if(c !== '\r') campo += c;
+  }
+  if(campo !== '' || fila.length){ fila.push(campo); filas.push(fila); }
+  return filas.filter(f => f.some(x => x.trim() !== ''));
+}
+let CSV_OK = [];
+function revisarCSV(){
+  const filas = parsearCSV(document.getElementById('csv-texto').value);
+  const caja = document.getElementById('csv-preview');
+  if(filas.length < 2){ caja.innerHTML = '<p class="muted">Necesito al menos la fila de encabezados y una fila de datos.</p>'; return; }
+
+  const cab = filas[0].map(h => limpiar(h).trim());
+  const idx = n => cab.indexOf(n);
+  const faltan = ['codigo','nombre','costo','precio_venta','cantidad'].filter(c => idx(c) === -1);
+  if(faltan.length){
+    caja.innerHTML = `<p style="color:var(--danger)">Faltan estas columnas en el encabezado: <b>${faltan.join(', ')}</b></p>`;
+    return;
+  }
+
+  CSV_OK = []; const errores = []; const vistos = new Set();
+  filas.slice(1).forEach((f, n) => {
+    const cod = (f[idx('codigo')]||'').trim().toUpperCase();
+    const nom = (f[idx('nombre')]||'').trim();
+    const costo = Number((f[idx('costo')]||'0').replace(/[^0-9.-]/g,''));
+    const precio = Number((f[idx('precio_venta')]||'0').replace(/[^0-9.-]/g,''));
+    const cant = parseInt((f[idx('cantidad')]||'0').replace(/[^0-9-]/g,'')) || 0;
+    const min = idx('stock_minimo') > -1 ? (parseInt(f[idx('stock_minimo')]) || 0) : 0;
+    const cat = idx('categoria') > -1 ? (f[idx('categoria')]||'').trim() : null;
+
+    if(!cod || !nom){ errores.push(`Fila ${n+2}: falta el código o el nombre`); return; }
+    if(vistos.has(cod)){ errores.push(`Fila ${n+2}: el código ${cod} está repetido en el archivo`); return; }
+    if(isNaN(costo) || isNaN(precio)){ errores.push(`Fila ${n+2}: costo o precio no son números`); return; }
+    vistos.add(cod);
+    CSV_OK.push({ cod, nom, cat, costo, precio, cant, min,
+                  existe: PRODUCTOS.some(p => p.codigo === cod),
+                  alerta: precio <= costo });
+  });
+
+  const nuevos = CSV_OK.filter(r => !r.existe).length;
+  const act = CSV_OK.filter(r => r.existe).length;
+  caja.innerHTML = `
+    <p><b>${CSV_OK.length}</b> filas listas · <b>${nuevos}</b> nuevas · <b>${act}</b> actualizaciones${errores.length?` · <span style="color:var(--danger)"><b>${errores.length}</b> con error</span>`:''}</p>
+    ${errores.length ? `<ul style="color:var(--danger);font-size:13px">${errores.slice(0,8).map(e=>`<li>${esc(e)}</li>`).join('')}</ul>` : ''}
+    <div style="overflow-x:auto;max-height:260px;margin:12px 0"><table><thead><tr><th>Código</th><th>Nombre</th><th class="right">Costo</th><th class="right">Precio</th><th class="right">Cant.</th><th></th></tr></thead><tbody>
+    ${CSV_OK.map(r=>`<tr><td class="mono">${esc(r.cod)}</td><td>${esc(r.nom)}</td><td class="right mono">${num(r.costo)}</td><td class="right mono">${num(r.precio)}</td><td class="right mono">${r.cant}</td>
+    <td>${r.alerta?'<span class="tag t-warn">precio ≤ costo</span>':(r.existe?'<span class="tag t-ok">actualiza</span>':'<span class="tag t-ok">nuevo</span>')}</td></tr>`).join('')}
+    </tbody></table></div>
+    ${CSV_OK.length ? '<button class="btn" onclick="cargarCSV()">Cargar estas ' + CSV_OK.length + ' filas</button>' : ''}`;
+}
+async function cargarCSV(){
+  const ref = 'CARGA-' + new Date().toISOString().slice(0,16).replace(/[-T:]/g,'');
+  let ok = 0, fail = 0;
+  document.getElementById('csv-preview').innerHTML = '<p class="muted">Cargando…</p>';
+  for(const r of CSV_OK){
+    const { error } = await sb.rpc('cargar_producto', {
+      p_codigo:r.cod, p_nombre:r.nom, p_categoria:r.cat, p_costo:r.costo,
+      p_precio:r.precio, p_cantidad:r.cant, p_stock_minimo:r.min, p_referencia:ref
+    });
+    error ? fail++ : ok++;
+  }
+  await cargarProductos();
+  document.getElementById('csv-preview').innerHTML =
+    `<p><b>${ok}</b> productos cargados${fail?` · <span style="color:var(--danger)">${fail} fallaron</span>`:''}. Referencia <span class="mono">${ref}</span>.</p>`;
+  document.getElementById('csv-texto').value = '';
+  aviso(ok + ' productos cargados');
+}
+
+/* ══════════ 12. INVENTARIO ══════════ */
+function pintarInventario(){
+  const q = limpiar(document.getElementById('q-inv').value);
+  const lista = PRODUCTOS.filter(p => !q ||
+    limpiar(p.codigo).includes(q) || limpiar(p.nombre).includes(q) || limpiar(p.categoria).includes(q));
+
+  const unidades = PRODUCTOS.reduce((a,p)=>a+p.stock_actual, 0);
+  const valorCosto = PRODUCTOS.reduce((a,p)=>a + p.stock_actual * Number(p.costo), 0);
+  const valorVenta = PRODUCTOS.reduce((a,p)=>a + p.stock_actual * Number(p.precio_venta), 0);
+  const bajos = PRODUCTOS.filter(p => p.stock_actual <= p.stock_minimo).length;
+
+  document.getElementById('inv-kpis').innerHTML = `
+    <div class="kpi"><div class="l">Referencias</div><div class="v">${PRODUCTOS.length}</div></div>
+    <div class="kpi"><div class="l">Unidades</div><div class="v">${num(unidades)}</div></div>
+    ${esAdmin()?`<div class="kpi"><div class="l">Valor al costo</div><div class="v">${fmt(valorCosto)}</div><div class="d">Si se vende todo: ${fmt(valorVenta)}</div></div>`:''}
+    <div class="kpi"><div class="l">Por reponer</div><div class="v">${bajos}</div><div class="d">en el mínimo o por debajo</div></div>`;
+
+  const t = document.getElementById('tabla-inv');
+  if(!lista.length){ t.innerHTML = '<tr><td class="empty-state">No hay productos que coincidan.</td></tr>'; return; }
+  t.innerHTML = `<thead><tr><th>Producto</th><th class="hide-sm">Categoría</th>${esAdmin()?'<th class="right">Costo</th>':''}<th class="right">Precio</th><th class="right">Stock</th><th></th></tr></thead><tbody>` +
+    lista.map(p=>{
+      const est = p.stock_actual <= 0 ? 't-bad' : (p.stock_actual <= p.stock_minimo ? 't-warn' : 't-ok');
+      return `<tr>
+        <td><b>${esc(p.nombre)}</b><br><span class="mono muted" style="font-size:11px">${esc(p.codigo)}</span></td>
+        <td class="hide-sm">${esc(p.categoria||'—')}</td>
+        ${esAdmin()?`<td class="right mono">${num(p.costo)}</td>`:''}
+        <td class="right mono">${num(p.precio_venta)}</td>
+        <td class="right"><span class="tag ${est}">${p.stock_actual}</span></td>
+        <td class="right"><button class="btn-2 btn-sm" onclick="modalMovimiento('${p.id}')">Mover</button></td>
+      </tr>`;
+    }).join('') + '</tbody>';
+}
+function modalMovimiento(id){
+  const p = PRODUCTOS.find(x=>x.id===id);
+  document.getElementById('modal-host').innerHTML = `
+  <div class="overlay" onclick="if(event.target===this)cerrarModal()"><div class="modal">
+    <h3>${esc(p.nombre)}</h3>
+    <p class="muted" style="margin-top:-10px;margin-bottom:18px">Stock actual: <b class="mono">${p.stock_actual}</b> · <span class="mono">${esc(p.codigo)}</span></p>
+    <div class="field"><label>Tipo de movimiento</label>
+      <select id="m-tipo" onchange="ayudaMov()">
+        <option value="ENTRADA">Entrada — llegó mercancía</option>
+        <option value="AJUSTE">Ajuste — conteo físico</option>
+      </select></div>
+    <div class="field"><label id="m-label">Unidades que entran</label><input id="m-cant" type="number" min="0" value="1"></div>
+    <div class="field"><label>Costo unitario nuevo (opcional)</label><input id="m-costo" type="number" min="0" step="500" placeholder="Dejar vacío para no cambiarlo"></div>
+    <div class="field"><label>Motivo</label><input id="m-motivo" placeholder="Compra a proveedor, conteo mensual…"></div>
+    <div style="display:flex;gap:10px"><button class="btn" style="flex:1" onclick="guardarMovimiento('${id}')">Registrar</button>
+    <button class="btn-2" onclick="cerrarModal()">Cancelar</button></div>
+  </div></div>`;
+}
+function ayudaMov(){
+  const t = document.getElementById('m-tipo').value;
+  document.getElementById('m-label').textContent =
+    t === 'ENTRADA' ? 'Unidades que entran' : 'Unidades contadas físicamente';
+}
+async function guardarMovimiento(id){
+  const costo = document.getElementById('m-costo').value;
+  const { data, error } = await sb.rpc('registrar_movimiento', {
+    p_producto_id: id,
+    p_tipo: document.getElementById('m-tipo').value,
+    p_cantidad: parseInt(document.getElementById('m-cant').value)||0,
+    p_motivo: document.getElementById('m-motivo').value || null,
+    p_costo_nuevo: costo ? Number(costo) : null
+  });
+  if(error){ aviso(error.message, true); return; }
+  cerrarModal();
+  aviso('Movimiento registrado. Nuevo saldo: ' + data.saldo);
+  await cargarProductos(); pintarInventario();
+}
+
+/* ══════════ 13. REPORTES ══════════ */
+async function cargarReportes(){
+  const ahora = new Date();
+  const iniMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+  const iniAnt = new Date(ahora.getFullYear(), ahora.getMonth()-1, 1);
+  const ini6   = new Date(ahora.getFullYear(), ahora.getMonth()-5, 1);
+
+  const { data: facs } = await sb.from('facturas').select('*')
+    .gte('fecha', iniAnt.toISOString()).eq('estado','EMITIDA').order('fecha',{ascending:false});
+  const { data: det } = await sb.from('factura_detalle')
+    .select('codigo,nombre_producto,cantidad,subtotal_linea,utilidad_linea,fecha,facturas!inner(estado)')
+    .gte('fecha', ini6.toISOString()).eq('facturas.estado','EMITIDA');
+  const { data: ult } = await sb.from('facturas').select('*').order('fecha',{ascending:false}).limit(15);
+
+  const mes = (facs||[]).filter(f => new Date(f.fecha) >= iniMes);
+  const ant = (facs||[]).filter(f => new Date(f.fecha) < iniMes);
+  const suma = (a,k) => a.reduce((s,x)=>s + Number(x[k]||0), 0);
+  const vMes = suma(mes,'total'), vAnt = suma(ant,'total');
+  const varia = vAnt ? Math.round((vMes - vAnt) / vAnt * 100) : null;
+  const ticket = mes.length ? vMes/mes.length : 0;
+  const util = suma(mes,'utilidad');
+
+  document.getElementById('rep-kpis').innerHTML = `
+    <div class="kpi"><div class="l">Ventas del mes</div><div class="v">${fmt(vMes)}</div>
+      <div class="d">${varia===null?'sin mes anterior':`<span class="${varia>=0?'up':'down'}">${varia>=0?'▲':'▼'} ${Math.abs(varia)}%</span> vs. mes anterior`}</div></div>
+    <div class="kpi"><div class="l">Pedidos</div><div class="v">${mes.length}</div><div class="d">Ticket promedio ${fmt(ticket)}</div></div>
+    ${esAdmin()?`<div class="kpi"><div class="l">Utilidad del mes</div><div class="v">${fmt(util)}</div><div class="d">Margen ${vMes?Math.round(util/vMes*100):0}%</div></div>`:''}
+    <div class="kpi"><div class="l">Unidades vendidas</div><div class="v">${num((det||[]).filter(d=>new Date(d.fecha)>=iniMes).reduce((a,d)=>a+d.cantidad,0))}</div><div class="d">este mes</div></div>`;
+
+  // Agregar ventas por código
+  const porCod = {};
+  (det||[]).forEach(d=>{
+    if(!porCod[d.codigo]) porCod[d.codigo] = { codigo:d.codigo, nombre:d.nombre_producto, unidades:0, venta:0, utilidad:0 };
+    porCod[d.codigo].unidades += d.cantidad;
+    porCod[d.codigo].venta    += Number(d.subtotal_linea);
+    porCod[d.codigo].utilidad += Number(d.utilidad_linea);
+  });
+
+  const top = Object.values(porCod).sort((a,b)=>b.unidades-a.unidades).slice(0,10);
+  document.getElementById('tabla-top').innerHTML = top.length
+    ? `<thead><tr><th>Producto</th><th class="right">Unid.</th><th class="right">Venta</th>${esAdmin()?'<th class="right">Utilidad</th>':''}</tr></thead><tbody>` +
+      top.map(r=>`<tr><td><b>${esc(r.nombre)}</b><br><span class="mono muted" style="font-size:11px">${esc(r.codigo)}</span></td>
+      <td class="right mono"><b>${r.unidades}</b></td><td class="right mono">${fmt(r.venta)}</td>
+      ${esAdmin()?`<td class="right mono util">${fmt(r.utilidad)}</td>`:''}</tr>`).join('') + '</tbody>'
+    : '<tr><td class="empty-state">Todavía no hay ventas registradas.</td></tr>';
+
+  // Menos vendidos: parte del catálogo completo, no de las ventas
+  const bottom = PRODUCTOS.map(p=>{
+    const v = porCod[p.codigo];
+    return { codigo:p.codigo, nombre:p.nombre, stock:p.stock_actual,
+             unidades: v ? v.unidades : 0, venta: v ? v.venta : 0 };
+  }).sort((a,b)=> a.unidades - b.unidades || b.stock - a.stock).slice(0,10);
+
+  document.getElementById('tabla-bottom').innerHTML = bottom.length
+    ? `<thead><tr><th>Producto</th><th class="right">Unid.</th><th class="right">En stock</th><th class="right">Venta</th></tr></thead><tbody>` +
+      bottom.map(r=>`<tr><td><b>${esc(r.nombre)}</b><br><span class="mono muted" style="font-size:11px">${esc(r.codigo)}</span></td>
+      <td class="right mono">${r.unidades === 0 ? '<span class="tag t-bad">0</span>' : r.unidades}</td>
+      <td class="right mono">${r.stock}</td><td class="right mono">${fmt(r.venta)}</td></tr>`).join('') + '</tbody>'
+    : '<tr><td class="empty-state">Carga productos para ver este reporte.</td></tr>';
+
+  document.getElementById('tabla-fac').innerHTML = (ult||[]).length
+    ? `<thead><tr><th>Factura</th><th>Clienta</th><th class="hide-sm">Fecha</th><th class="right">Total</th><th></th></tr></thead><tbody>` +
+      ult.map(f=>`<tr>
+        <td class="mono">${esc(f.num_factura)}${f.estado==='ANULADA'?' <span class="tag t-bad">anulada</span>':''}</td>
+        <td>${esc(f.nombre_cliente||'—')}</td>
+        <td class="hide-sm">${new Date(f.fecha).toLocaleDateString('es-CO')}</td>
+        <td class="right mono">${fmt(f.total)}</td>
+        <td class="right">${f.pdf_url?`<a href="${esc(f.pdf_url)}" target="_blank" class="btn-3" style="text-decoration:none">PDF</a>`:''}
+        ${esAdmin() && f.estado!=='ANULADA'?`<button class="btn-3" onclick="anular('${f.id}','${esc(f.num_factura)}')">Anular</button>`:''}</td>
+      </tr>`).join('') + '</tbody>'
+    : '<tr><td class="empty-state">Todavía no has facturado.</td></tr>';
+}
+async function anular(id, numf){
+  const motivo = prompt('¿Por qué se anula la factura ' + numf + '?\nEl inventario se devuelve automáticamente.');
+  if(motivo === null) return;
+  const { error } = await sb.rpc('anular_factura', { p_factura_id:id, p_motivo:motivo || 'sin motivo' });
+  if(error){ aviso(error.message, true); return; }
+  aviso(numf + ' anulada. Inventario devuelto.');
+  await cargarProductos(); cargarReportes();
+}
+
+/* ══════════ 14. INICIO ══════════ */
+document.addEventListener('click', e=>{
+  if(!e.target.closest('.search-wrap')){
+    document.getElementById('res-cliente').classList.add('hidden');
+    document.getElementById('res-producto').classList.add('hidden');
+  }
+});
+sb.auth.onAuthStateChange((evento)=>{
+  if(evento === 'SIGNED_IN' && !PERFIL) arrancar();
+});
+arrancar();
+</script>
+</body>
+</html>
