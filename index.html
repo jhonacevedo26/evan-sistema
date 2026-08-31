@@ -156,8 +156,10 @@ main{max-width:1080px;margin:0 auto;padding:22px 18px 80px}
   </div>
   <nav>
     <button data-v="facturar" class="on" onclick="ir('facturar')">Facturar</button>
+    <button data-v="facturas" onclick="ir('facturas')">Facturas</button>
     <button data-v="inventario" onclick="ir('inventario')">Inventario</button>
     <button data-v="productos" onclick="ir('productos')">Productos</button>
+    <button data-v="sets" onclick="ir('sets')">Sets</button>
     <button data-v="clientes" onclick="ir('clientes')">Clientes</button>
     <button data-v="reportes" onclick="ir('reportes')">Reportes</button>
   </nav>
@@ -304,6 +306,54 @@ main{max-width:1080px;margin:0 auto;padding:22px 18px 80px}
   </div>
 </section>
 
+<!-- ─────── SETS ─────── -->
+<section id="v-sets" class="hidden">
+  <h1 class="view-title">Sets y combos</h1>
+  <p class="view-sub">Arma un set con las piezas que ya tienes. En la factura sale como un solo producto; el inventario descuenta cada pieza.</p>
+
+  <div class="card">
+    <h3 id="set-titulo">Nuevo set</h3>
+    <p class="sub">Elige las piezas, ajusta las cantidades y ponle el precio de venta.</p>
+    <div class="row">
+      <div class="field"><label>Código del set</label><input id="set-codigo" placeholder="SET-001"></div>
+      <div class="field"><label>Nombre</label><input id="set-nombre" placeholder="Set Verano"></div>
+    </div>
+
+    <label>Piezas que lo componen</label>
+    <div class="search-wrap" style="margin-bottom:12px">
+      <input id="q-set-pieza" placeholder="Busca una pieza por código o nombre" oninput="buscarPiezas()" autocomplete="off">
+      <div id="res-set-pieza" class="results hidden"></div>
+    </div>
+    <div id="set-piezas"></div>
+
+    <div class="row" style="margin-top:16px;align-items:flex-end">
+      <div class="field" style="margin-bottom:0"><label>Precio de venta del set</label><input id="set-precio" type="number" min="0" step="500" value="0" oninput="pintarResumenSet()"></div>
+      <div style="flex:2;min-width:200px" id="set-resumen"></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="btn" onclick="guardarSet()">Guardar set</button>
+      <button class="btn-3" id="set-cancelar" class="hidden" onclick="nuevoSet()">Cancelar edición</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Sets creados</h3>
+    <div style="overflow-x:auto"><table id="tabla-sets"></table></div>
+  </div>
+</section>
+
+<!-- ─────── FACTURAS (consulta) ─────── -->
+<section id="v-facturas" class="hidden">
+  <h1 class="view-title">Facturas</h1>
+  <p class="view-sub">Consulta cualquier factura anterior. Solo lectura: puedes reabrir el PDF original o reenviarlo.</p>
+  <div class="card">
+    <div style="display:flex;gap:10px;margin-bottom:14px">
+      <input id="q-facturas" placeholder="Buscar por número de factura o clienta" oninput="buscarFacturas()">
+    </div>
+    <div style="overflow-x:auto"><table id="tabla-consulta-fac"></table></div>
+  </div>
+</section>
+
 <!-- ─────── REPORTES ─────── -->
 <section id="v-reportes" class="hidden">
   <h1 class="view-title">Reportes</h1>
@@ -335,6 +385,8 @@ const { jsPDF } = window.jspdf;
 
 let USER = null, PERFIL = null, CONFIG = {};
 let PRODUCTOS = [], CARRITO = [], CLIENTE = null, ULTIMA = null;
+let DISPONIBLES = {};        // set_id -> unidades armables
+let SET_EDIT = { id:null, piezas:[] };   // set en construcción
 
 const esAdmin = () => PERFIL && PERFIL.rol === 'admin';
 const fmt = n => new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(Number(n)||0);
@@ -405,17 +457,25 @@ async function cargarProductos(){
   const { data, error } = await sb.from('productos').select('*').eq('activo', true).order('codigo');
   if(error){ aviso('No se pudo leer el catálogo: ' + error.message, true); return; }
   PRODUCTOS = data || [];
+  // disponibilidad de sets (cuántos se pueden armar según piezas)
+  const { data:disp } = await sb.rpc('disponibilidad_sets');
+  DISPONIBLES = {};
+  (disp||[]).forEach(d => DISPONIBLES[d.set_id] = d.disponible);
 }
+// stock efectivo: los sueltos usan su stock; los sets, su disponibilidad calculada
+function stockDe(p){ return p.es_set ? (DISPONIBLES[p.id] ?? 0) : p.stock_actual; }
 
 /* ══════════ 4. NAVEGACIÓN ══════════ */
 function ir(v){
-  ['facturar','inventario','productos','clientes','reportes'].forEach(x=>
+  ['facturar','facturas','inventario','productos','sets','clientes','reportes'].forEach(x=>
     document.getElementById('v-'+x).classList.toggle('hidden', x !== v));
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.v === v));
   window.scrollTo(0,0);
   if(v === 'inventario'){ cargarProductos().then(pintarInventario); }
   if(v === 'clientes')  { listarClientes(); }
   if(v === 'reportes')  { cargarReportes(); }
+  if(v === 'sets')      { cargarProductos().then(()=>{ nuevoSet(); listarSets(); }); }
+  if(v === 'facturas')  { buscarFacturas(); }
 }
 
 /* ══════════ 5. FACTURAR — clienta ══════════ */
@@ -468,24 +528,26 @@ function buscarProductos(){
     limpiar(p.codigo).includes(q) || limpiar(p.nombre).includes(q) || limpiar(p.categoria).includes(q)
   ).slice(0,7);
   caja.classList.remove('hidden');
-  caja.innerHTML = hits.length ? hits.map(p=>
-    `<div onclick="agregar('${p.id}')">
-      <b>${esc(p.nombre)}</b> <span class="mono muted" style="font-size:12px">${esc(p.codigo)}</span><br>
-      <span style="font-size:12px">${fmt(p.precio_venta)} · <span class="${p.stock_actual<=0?'down':''}">${p.stock_actual} en stock</span></span>
-    </div>`).join('')
+  caja.innerHTML = hits.length ? hits.map(p=>{
+    const st = stockDe(p);
+    return `<div onclick="agregar('${p.id}')">
+      <b>${esc(p.nombre)}</b> <span class="mono muted" style="font-size:12px">${esc(p.codigo)}</span>${p.es_set?' <span class="tag t-ok" style="font-size:10px">SET</span>':''}<br>
+      <span style="font-size:12px">${fmt(p.precio_venta)} · <span class="${st<=0?'down':''}">${st} ${p.es_set?'armables':'en stock'}</span></span>
+    </div>`;}).join('')
     : '<div class="empty">No hay productos con ese nombre o código.</div>';
 }
 function agregar(id){
   const p = PRODUCTOS.find(x=>x.id===id);
   if(!p) return;
-  if(p.stock_actual <= 0){ aviso(p.nombre + ' está agotado. Registra una entrada primero.', true); return; }
+  const st = stockDe(p);
+  if(st <= 0){ aviso(p.nombre + (p.es_set?' no se puede armar: faltan piezas.':' está agotado. Registra una entrada primero.'), true); return; }
   const y = CARRITO.find(x=>x.producto_id===id);
   if(y){
-    if(y.cantidad + 1 > p.stock_actual){ aviso('Solo quedan ' + p.stock_actual + ' unidades de ' + p.codigo, true); return; }
+    if(y.cantidad + 1 > st){ aviso('Solo hay ' + st + (p.es_set?' armables de ':' unidades de ') + p.codigo, true); return; }
     y.cantidad++;
   } else {
-    CARRITO.push({ producto_id:id, codigo:p.codigo, nombre:p.nombre,
-                   cantidad:1, precio_unitario:Number(p.precio_venta), costo:Number(p.costo), stock:p.stock_actual });
+    CARRITO.push({ producto_id:id, codigo:p.codigo, nombre:p.nombre, es_set:p.es_set,
+                   cantidad:1, precio_unitario:Number(p.precio_venta), costo:Number(p.costo), stock:st });
   }
   document.getElementById('q-producto').value = '';
   document.getElementById('res-producto').classList.add('hidden');
@@ -494,7 +556,7 @@ function agregar(id){
 function cambiarCant(i, v){
   const it = CARRITO[i]; const n = parseInt(v);
   if(isNaN(n) || n < 1){ return; }
-  if(n > it.stock){ aviso('Solo quedan ' + it.stock + ' unidades de ' + it.codigo, true); pintarTotales(); return; }
+  if(n > it.stock){ aviso('Solo hay ' + it.stock + (it.es_set?' armables de ':' unidades de ') + it.codigo, true); pintarTotales(); return; }
   it.cantidad = n; pintarTotales();
 }
 function cambiarPrecio(i, v){ CARRITO[i].precio_unitario = Number(v)||0; pintarTotales(); }
@@ -564,9 +626,14 @@ async function confirmarPedido(){
   b.disabled = false; b.textContent = 'Confirmar pedido';
   if(error){ aviso('No se guardó el pedido: ' + error.message, true); return; }
 
+  // recuperar el texto de piezas de los sets vendidos, para el PDF
+  const { data:det } = await sb.from('factura_detalle').select('codigo,componentes_txt').eq('factura_id', data.factura_id);
+  const txtPorCod = {}; (det||[]).forEach(d=>{ if(d.componentes_txt) txtPorCod[d.codigo] = d.componentes_txt; });
+  const itemsPDF = CARRITO.map(i=>({ ...i, componentes_txt: txtPorCod[i.codigo] || null }));
+
   ULTIMA = {
     num: data.num_factura, id: data.factura_id, total: data.total,
-    cliente: CLIENTE, items: CARRITO.slice(), ...t,
+    cliente: CLIENTE, items: itemsPDF, ...t,
     mensaje_tarjeta: document.getElementById('i-tarjeta-msg').value,
     pago: document.getElementById('i-pago').value, fecha: hoy(), pdf_url: null
   };
@@ -633,7 +700,7 @@ function construirPDF(f){
 
   d.setTextColor(36,27,34); d.setFontSize(10);
   f.items.forEach(i=>{
-    if(y > 250){ d.addPage(); y = 25; }
+    if(y > 245){ d.addPage(); y = 25; }
     d.text(String(i.nombre).substring(0,42), M+2, y);
     d.setTextColor(150,140,145); d.setFontSize(8);
     d.text(i.codigo, M+2, y+4);
@@ -641,7 +708,14 @@ function construirPDF(f){
     d.text(String(i.cantidad), 128, y, {align:'right'});
     d.text(num(i.precio_unitario), 158, y, {align:'right'});
     d.text(num(i.cantidad*i.precio_unitario), W-M-2, y, {align:'right'});
-    y += 11;
+    y += 6;
+    if(i.componentes_txt){   // set: listar piezas sin precio
+      d.setFontSize(8); d.setTextColor(120,110,115);
+      const lineas = d.splitTextToSize('Incluye: ' + i.componentes_txt, 100);
+      d.text(lineas, M+4, y); y += lineas.length * 3.6;
+      d.setTextColor(36,27,34); d.setFontSize(10);
+    }
+    y += 5;
   });
 
   d.setDrawColor(231,222,215); d.line(120, y, W-M, y); y += 8;
@@ -899,19 +973,179 @@ async function cargarCSV(){
   aviso(ok + ' productos cargados');
 }
 
+/* ══════════ 11b. SETS ══════════ */
+function nuevoSet(){
+  SET_EDIT = { id:null, piezas:[] };
+  document.getElementById('set-titulo').textContent = 'Nuevo set';
+  document.getElementById('set-codigo').value = '';
+  document.getElementById('set-codigo').disabled = false;
+  document.getElementById('set-nombre').value = '';
+  document.getElementById('set-precio').value = 0;
+  document.getElementById('q-set-pieza').value = '';
+  document.getElementById('set-cancelar').classList.add('hidden');
+  pintarPiezasSet(); pintarResumenSet();
+}
+function buscarPiezas(){
+  const q = limpiar(document.getElementById('q-set-pieza').value.trim());
+  const caja = document.getElementById('res-set-pieza');
+  if(q.length < 2){ caja.classList.add('hidden'); return; }
+  const hits = PRODUCTOS.filter(p => !p.es_set &&    // un set no puede contener otro set
+    (limpiar(p.codigo).includes(q) || limpiar(p.nombre).includes(q))).slice(0,7);
+  caja.classList.remove('hidden');
+  caja.innerHTML = hits.length ? hits.map(p=>
+    `<div onclick="agregarPieza('${p.id}')"><b>${esc(p.nombre)}</b>
+      <span class="mono muted" style="font-size:12px">${esc(p.codigo)}</span><br>
+      <span style="font-size:12px">costo ${fmt(p.costo)} · precio ${fmt(p.precio_venta)}</span></div>`).join('')
+    : '<div class="empty">Sin piezas para ese término.</div>';
+}
+function agregarPieza(id){
+  if(SET_EDIT.piezas.find(x=>x.componente_id===id)){ aviso('Esa pieza ya está en el set.', true); return; }
+  const p = PRODUCTOS.find(x=>x.id===id);
+  SET_EDIT.piezas.push({ componente_id:id, codigo:p.codigo, nombre:p.nombre, costo:Number(p.costo), precio:Number(p.precio_venta), cantidad:1 });
+  document.getElementById('q-set-pieza').value = '';
+  document.getElementById('res-set-pieza').classList.add('hidden');
+  pintarPiezasSet(); pintarResumenSet();
+}
+function cantPieza(i, v){ const n = parseInt(v); if(n>=1){ SET_EDIT.piezas[i].cantidad = n; pintarResumenSet(); } }
+function quitarPieza(i){ SET_EDIT.piezas.splice(i,1); pintarPiezasSet(); pintarResumenSet(); }
+function pintarPiezasSet(){
+  const c = document.getElementById('set-piezas');
+  if(!SET_EDIT.piezas.length){ c.innerHTML = '<div class="empty-state">Aún no has agregado piezas.</div>'; return; }
+  c.innerHTML = `<table><thead><tr><th>Pieza</th><th style="width:90px">Cantidad</th><th class="right">Costo</th><th></th></tr></thead><tbody>` +
+    SET_EDIT.piezas.map((p,i)=>`<tr>
+      <td><b>${esc(p.nombre)}</b><br><span class="mono muted" style="font-size:11px">${esc(p.codigo)}</span></td>
+      <td><input type="number" min="1" value="${p.cantidad}" onchange="cantPieza(${i},this.value)" style="padding:6px"></td>
+      <td class="right mono">${fmt(p.costo*p.cantidad)}</td>
+      <td><button class="btn-3" onclick="quitarPieza(${i})">✕</button></td></tr>`).join('') + '</tbody></table>';
+}
+function pintarResumenSet(){
+  const costo = SET_EDIT.piezas.reduce((a,p)=>a+p.costo*p.cantidad,0);
+  const sugerido = SET_EDIT.piezas.reduce((a,p)=>a+p.precio*p.cantidad,0);
+  const precio = Number(document.getElementById('set-precio').value)||0;
+  document.getElementById('set-resumen').innerHTML =
+    `<div class="tot"><span>Costo real (suma de piezas)</span><span class="mono">${fmt(costo)}</span></div>
+     <div class="tot"><span>Precio sugerido</span><span class="mono">${fmt(sugerido)}</span>
+        ${!precio?`<button class="btn-3 btn-sm" onclick="document.getElementById('set-precio').value=${sugerido};pintarResumenSet()">usar</button>`:''}</div>
+     ${precio?`<div class="tot"><span>Utilidad por set</span><span class="mono util">${fmt(precio-costo)}</span></div>`:''}`;
+}
+async function guardarSet(){
+  const codigo = document.getElementById('set-codigo').value.trim().toUpperCase();
+  const nombre = document.getElementById('set-nombre').value.trim();
+  const precio = Number(document.getElementById('set-precio').value)||0;
+  if(!codigo || !nombre){ aviso('El código y el nombre del set son obligatorios.', true); return; }
+  if(!SET_EDIT.piezas.length){ aviso('El set necesita al menos una pieza.', true); return; }
+  if(precio <= 0){ aviso('Ponle un precio de venta al set.', true); return; }
+
+  const { error } = await sb.rpc('guardar_set', {
+    p_codigo: codigo, p_nombre: nombre, p_precio: precio,
+    p_componentes: SET_EDIT.piezas.map(p=>({ componente_id:p.componente_id, cantidad:p.cantidad })),
+    p_set_id: SET_EDIT.id
+  });
+  if(error){ aviso(error.message.includes('duplicate')?'Ya existe un producto con ese código.':error.message, true); return; }
+  aviso(SET_EDIT.id ? 'Set actualizado' : 'Set creado');
+  await cargarProductos(); nuevoSet(); listarSets();
+}
+async function listarSets(){
+  const sets = PRODUCTOS.filter(p=>p.es_set);
+  const t = document.getElementById('tabla-sets');
+  if(!sets.length){ t.innerHTML = '<tr><td class="empty-state">Todavía no has creado sets.</td></tr>'; return; }
+  // traer las piezas de todos los sets de una vez
+  const { data:comp } = await sb.from('set_componentes')
+    .select('set_id,cantidad,productos!set_componentes_componente_id_fkey(nombre)');
+  const porSet = {};
+  (comp||[]).forEach(c=>{ (porSet[c.set_id] ??= []).push(`${c.cantidad}× ${c.productos?.nombre||'?'}`); });
+  t.innerHTML = `<thead><tr><th>Set</th><th>Incluye</th>${esAdmin()?'<th class="right">Costo</th>':''}<th class="right">Precio</th><th class="right">Armables</th><th></th></tr></thead><tbody>` +
+    sets.map(s=>`<tr>
+      <td><b>${esc(s.nombre)}</b><br><span class="mono muted" style="font-size:11px">${esc(s.codigo)}</span></td>
+      <td style="font-size:13px">${(porSet[s.id]||[]).map(esc).join(' · ')||'—'}</td>
+      ${esAdmin()?`<td class="right mono">${fmt(s.costo)}</td>`:''}
+      <td class="right mono">${fmt(s.precio_venta)}</td>
+      <td class="right"><span class="tag ${(DISPONIBLES[s.id]||0)<=0?'t-bad':'t-ok'}">${DISPONIBLES[s.id]||0}</span></td>
+      <td class="right"><button class="btn-2 btn-sm" onclick="editarSet('${s.id}')">Editar</button></td>
+    </tr>`).join('') + '</tbody>';
+}
+async function editarSet(id){
+  const s = PRODUCTOS.find(x=>x.id===id);
+  const { data:comp } = await sb.from('set_componentes').select('componente_id,cantidad').eq('set_id', id);
+  SET_EDIT = { id, piezas:(comp||[]).map(c=>{
+    const p = PRODUCTOS.find(x=>x.id===c.componente_id) || {};
+    return { componente_id:c.componente_id, codigo:p.codigo, nombre:p.nombre, costo:Number(p.costo)||0, precio:Number(p.precio_venta)||0, cantidad:c.cantidad };
+  }) };
+  document.getElementById('set-titulo').textContent = 'Editar ' + s.nombre;
+  document.getElementById('set-codigo').value = s.codigo;
+  document.getElementById('set-codigo').disabled = true;
+  document.getElementById('set-nombre').value = s.nombre;
+  document.getElementById('set-precio').value = s.precio_venta;
+  document.getElementById('set-cancelar').classList.remove('hidden');
+  pintarPiezasSet(); pintarResumenSet();
+  window.scrollTo(0,0);
+}
+
+/* ══════════ 11c. CONSULTA DE FACTURAS ══════════ */
+let tFac;
+function buscarFacturas(){
+  clearTimeout(tFac);
+  tFac = setTimeout(async ()=>{
+    const q = document.getElementById('q-facturas').value.trim();
+    let sel = sb.from('facturas').select('*').order('fecha',{ascending:false}).limit(40);
+    if(q.length >= 2) sel = sb.from('facturas').select('*')
+      .or(`num_factura.ilike.%${q}%,nombre_cliente.ilike.%${q}%`).order('fecha',{ascending:false}).limit(40);
+    const { data } = await sel;
+    const t = document.getElementById('tabla-consulta-fac');
+    if(!data || !data.length){ t.innerHTML = '<tr><td class="empty-state">No se encontraron facturas.</td></tr>'; return; }
+    t.innerHTML = `<thead><tr><th>Factura</th><th>Clienta</th><th class="hide-sm">Fecha</th><th class="right">Total</th><th></th></tr></thead><tbody>` +
+      data.map(f=>`<tr>
+        <td class="mono">${esc(f.num_factura)}${f.estado==='ANULADA'?' <span class="tag t-bad">anulada</span>':''}</td>
+        <td>${esc(f.nombre_cliente||'—')}</td>
+        <td class="hide-sm">${new Date(f.fecha).toLocaleDateString('es-CO')}</td>
+        <td class="right mono">${fmt(f.total)}</td>
+        <td class="right">
+          ${f.pdf_url?`<a href="${esc(f.pdf_url)}" target="_blank" class="btn-3" style="text-decoration:none">Ver PDF</a>`:'<span class="muted" style="font-size:12px">sin PDF</span>'}
+          <button class="btn-3" onclick='verFactura(${JSON.stringify(f).replace(/'/g,"&#39;")})'>Detalle</button>
+        </td></tr>`).join('') + '</tbody>';
+  }, 250);
+}
+async function verFactura(f){
+  const { data:det } = await sb.from('factura_detalle').select('*').eq('factura_id', f.id);
+  document.getElementById('modal-host').innerHTML = `
+  <div class="overlay" onclick="if(event.target===this)cerrarModal()"><div class="modal">
+    <h3>${esc(f.num_factura)} ${f.estado==='ANULADA'?'<span class="tag t-bad">anulada</span>':''}</h3>
+    <p class="muted" style="margin-top:-8px">${esc(f.nombre_cliente||'')} · ${new Date(f.fecha).toLocaleDateString('es-CO')} · ${esc(f.metodo_pago||'')}</p>
+    <table style="margin:14px 0"><tbody>
+      ${(det||[]).map(d=>`<tr><td><b>${esc(d.nombre_producto)}</b>${d.componentes_txt?`<br><span class="muted" style="font-size:11px">${esc(d.componentes_txt)}</span>`:''}</td>
+        <td class="right mono">${d.cantidad} × ${fmt(d.precio_unitario)}</td></tr>`).join('')}
+    </tbody></table>
+    <div class="tot grand"><span>Total</span><span class="mono">${fmt(f.total)}</span></div>
+    <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+      ${f.pdf_url?`<a href="${esc(f.pdf_url)}" target="_blank" class="btn" style="text-decoration:none;flex:1;text-align:center">Abrir PDF original</a>`:''}
+      <button class="btn-2" onclick="reenviarWA(${JSON.stringify(f).replace(/'/g,"&#39;")})">WhatsApp</button>
+      <button class="btn-2" onclick="cerrarModal()">Cerrar</button>
+    </div>
+  </div></div>`;
+}
+async function reenviarWA(f){
+  const { data:cli } = await sb.from('clientes').select('telefono').eq('id', f.cliente_id).maybeSingle();
+  const tel = telWhatsApp(cli?.telefono);
+  if(!tel){ aviso('Esta clienta no tiene teléfono guardado.', true); return; }
+  const msg = `Hola ${f.nombre_cliente}, aquí está tu factura ${f.num_factura} de EVAN accesorios.\nTotal: ${fmt(f.total)}` +
+    (f.pdf_url?`\n${f.pdf_url}`:'');
+  window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, '_blank');
+}
+
 /* ══════════ 12. INVENTARIO ══════════ */
 function pintarInventario(){
   const q = limpiar(document.getElementById('q-inv').value);
-  const lista = PRODUCTOS.filter(p => !q ||
+  const fisicos = PRODUCTOS.filter(p => !p.es_set);   // los sets no tienen stock propio
+  const lista = fisicos.filter(p => !q ||
     limpiar(p.codigo).includes(q) || limpiar(p.nombre).includes(q) || limpiar(p.categoria).includes(q));
 
-  const unidades = PRODUCTOS.reduce((a,p)=>a+p.stock_actual, 0);
-  const valorCosto = PRODUCTOS.reduce((a,p)=>a + p.stock_actual * Number(p.costo), 0);
-  const valorVenta = PRODUCTOS.reduce((a,p)=>a + p.stock_actual * Number(p.precio_venta), 0);
-  const bajos = PRODUCTOS.filter(p => p.stock_actual <= p.stock_minimo).length;
+  const unidades = fisicos.reduce((a,p)=>a+p.stock_actual, 0);
+  const valorCosto = fisicos.reduce((a,p)=>a + p.stock_actual * Number(p.costo), 0);
+  const valorVenta = fisicos.reduce((a,p)=>a + p.stock_actual * Number(p.precio_venta), 0);
+  const bajos = fisicos.filter(p => p.stock_actual <= p.stock_minimo).length;
 
   document.getElementById('inv-kpis').innerHTML = `
-    <div class="kpi"><div class="l">Referencias</div><div class="v">${PRODUCTOS.length}</div></div>
+    <div class="kpi"><div class="l">Referencias</div><div class="v">${fisicos.length}</div></div>
     <div class="kpi"><div class="l">Unidades</div><div class="v">${num(unidades)}</div></div>
     ${esAdmin()?`<div class="kpi"><div class="l">Valor al costo</div><div class="v">${fmt(valorCosto)}</div><div class="d">Si se vende todo: ${fmt(valorVenta)}</div></div>`:''}
     <div class="kpi"><div class="l">Por reponer</div><div class="v">${bajos}</div><div class="d">en el mínimo o por debajo</div></div>`;
