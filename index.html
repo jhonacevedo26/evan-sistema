@@ -161,6 +161,7 @@ main{max-width:1080px;margin:0 auto;padding:22px 18px 80px}
     <button data-v="productos" onclick="ir('productos')">Productos</button>
     <button data-v="sets" onclick="ir('sets')">Sets</button>
     <button data-v="clientes" onclick="ir('clientes')">Clientes</button>
+    <button data-v="puntos" onclick="ir('puntos')">Puntos</button>
     <button data-v="reportes" onclick="ir('reportes')">Reportes</button>
   </nav>
 </header>
@@ -186,6 +187,7 @@ main{max-width:1080px;margin:0 auto;padding:22px 18px 80px}
         <div><b id="cli-nombre"></b><small id="cli-datos"></small></div>
         <button class="btn-3" onclick="quitarCliente()">Cambiar</button>
       </div>
+      <div id="puntos-cliente"></div>
     </div>
 
     <div class="card">
@@ -279,6 +281,12 @@ main{max-width:1080px;margin:0 auto;padding:22px 18px 80px}
       <div class="field"><label>Cantidad inicial</label><input id="p-cant" type="number" min="0" value="0"></div>
       <div class="field"><label>Stock mínimo</label><input id="p-min" type="number" min="0" value="2"></div>
     </div>
+    <div class="field">
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-size:14px;letter-spacing:0">
+        <input type="checkbox" id="p-canjeable" style="width:auto" onchange="document.getElementById('p-pts-wrap').classList.toggle('hidden', !this.checked)"> Canjeable por puntos (premio de fidelización)
+      </label>
+    </div>
+    <div class="field hidden" id="p-pts-wrap"><label>Precio en puntos</label><input id="p-precio-pts" type="number" min="1" placeholder="25"></div>
     <button class="btn" onclick="crearProducto()">Guardar producto</button>
   </div>
 
@@ -354,6 +362,22 @@ main{max-width:1080px;margin:0 auto;padding:22px 18px 80px}
   </div>
 </section>
 
+<!-- ─────── PUNTOS (dashboard) ─────── -->
+<section id="v-puntos" class="hidden">
+  <h1 class="view-title">Puntos y clientas fieles</h1>
+  <p class="view-sub">Tus clientas ordenadas por puntos. Aquí están las que más te quieren — consiéntelas.</p>
+  <div class="kpis" id="pts-kpis"></div>
+  <div class="card">
+    <h3>Cumpleaños próximos</h3>
+    <p class="sub">Los próximos 30 días. Un detalle en su día las enamora.</p>
+    <div id="pts-cumple"></div>
+  </div>
+  <div class="card">
+    <h3>Ranking de clientas</h3>
+    <div style="overflow-x:auto"><table id="tabla-ranking"></table></div>
+  </div>
+</section>
+
 <!-- ─────── REPORTES ─────── -->
 <section id="v-reportes" class="hidden">
   <h1 class="view-title">Reportes</h1>
@@ -377,14 +401,15 @@ main{max-width:1080px;margin:0 auto;padding:22px 18px 80px}
    1. CONFIGURACIÓN — reemplaza estas dos líneas con tus llaves
    ══════════════════════════════════════════════════════════ */
 const SUPABASE_URL  = "https://mkcgorcjvexayoohfzyh.supabase.co";
-const SUPABASE_ANON = "sb_publishable_y0-cn5QhIxn6HhMK-hoZhA_bbj2wHkw";
+const SUPABASE_ANON = "sb_publishable_y0-cn5QhIxn6HhMK-hoZhA_bbj2wHkw
+";
 
 /* ══════════ 2. ESTADO ══════════ */
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const { jsPDF } = window.jspdf;
 
 let USER = null, PERFIL = null, CONFIG = {};
-let PRODUCTOS = [], CARRITO = [], CLIENTE = null, ULTIMA = null;
+let PRODUCTOS = [], CARRITO = [], CLIENTE = null, ULTIMA = null, CANJES = [];
 let DISPONIBLES = {};        // set_id -> unidades armables
 let SET_EDIT = { id:null, piezas:[] };   // set en construcción
 
@@ -467,7 +492,7 @@ function stockDe(p){ return p.es_set ? (DISPONIBLES[p.id] ?? 0) : p.stock_actual
 
 /* ══════════ 4. NAVEGACIÓN ══════════ */
 function ir(v){
-  ['facturar','facturas','inventario','productos','sets','clientes','reportes'].forEach(x=>
+  ['facturar','facturas','inventario','productos','sets','clientes','puntos','reportes'].forEach(x=>
     document.getElementById('v-'+x).classList.toggle('hidden', x !== v));
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.v === v));
   window.scrollTo(0,0);
@@ -476,6 +501,7 @@ function ir(v){
   if(v === 'reportes')  { cargarReportes(); }
   if(v === 'sets')      { cargarProductos().then(()=>{ nuevoSet(); listarSets(); }); }
   if(v === 'facturas')  { buscarFacturas(); }
+  if(v === 'puntos')    { cargarPuntos(); }
 }
 
 /* ══════════ 5. FACTURAR — clienta ══════════ */
@@ -505,18 +531,59 @@ function buscarClientes(){
 }
 function elegirCliente(c){
   CLIENTE = c;
+  CANJES = [];
   document.getElementById('cli-buscador').classList.add('hidden');
   document.getElementById('cli-elegida').classList.remove('hidden');
   document.getElementById('cli-nombre').textContent = c.nombre;
   document.getElementById('cli-datos').textContent =
     [c.telefono, c.correo, c.ciudad].filter(Boolean).join(' · ') || 'Sin datos de contacto';
   document.getElementById('res-cliente').classList.add('hidden');
+  pintarPuntosCliente();
+  pintarTotales();
 }
+function pintarPuntosCliente(){
+  const cont = document.getElementById('puntos-cliente');
+  if(!cont) return;
+  if(!CLIENTE){ cont.innerHTML = ''; return; }
+  const saldo = CLIENTE.puntos || 0;
+  const premios = PRODUCTOS.filter(p => p.canjeable && p.precio_puntos && !p.es_set);
+  const alcance = premios.filter(p => p.precio_puntos <= (saldo - puntosUsados()));
+  let html = `<div class="chip" style="background:#FBF4E4;margin-top:10px">
+     <div><b>${saldo} puntos</b> acumulados<small>Gana ${CONFIG.puntos_porcentaje||5}% en puntos con cada compra</small></div></div>`;
+  if(premios.length){
+    html += `<div style="margin-top:10px"><label>Canjear un premio</label>`;
+    if(alcance.length){
+      html += alcance.map(p=>`<button class="btn-2 btn-sm" style="margin:3px" onclick="agregarCanje('${p.id}')">
+        ${esc(p.nombre)} · ${p.precio_puntos} pts</button>`).join('');
+    } else {
+      const falta = premios.reduce((m,p)=>Math.min(m,p.precio_puntos),Infinity) - (saldo - puntosUsados());
+      html += `<p class="muted" style="font-size:13px">Le faltan ${falta} puntos para el premio más cercano.</p>`;
+    }
+    if(CANJES.length){
+      html += `<div style="margin-top:8px">` + CANJES.map((c,i)=>`<div class="chip" style="margin-top:4px">
+        <div><b>🎁 ${esc(c.nombre)}</b><small>premio · ${c.precio_puntos} pts</small></div>
+        <button class="btn-3" onclick="quitarCanje(${i})">Quitar</button></div>`).join('') + `</div>`;
+    }
+    html += `</div>`;
+  }
+  cont.innerHTML = html;
+}
+function puntosUsados(){ return CANJES.reduce((a,c)=>a+c.precio_puntos,0); }
+function agregarCanje(id){
+  const p = PRODUCTOS.find(x=>x.id===id);
+  const saldo = (CLIENTE.puntos||0) - puntosUsados();
+  if(p.precio_puntos > saldo){ aviso('No le alcanzan los puntos para este premio.', true); return; }
+  if((p.stock_actual||0) < 1){ aviso('No hay stock de ese premio.', true); return; }
+  CANJES.push({ producto_id:id, nombre:p.nombre, precio_puntos:p.precio_puntos });
+  pintarPuntosCliente();
+}
+function quitarCanje(i){ CANJES.splice(i,1); pintarPuntosCliente(); }
 function quitarCliente(){
-  CLIENTE = null;
+  CLIENTE = null; CANJES = [];
   document.getElementById('cli-buscador').classList.remove('hidden');
   document.getElementById('cli-elegida').classList.add('hidden');
   document.getElementById('q-cliente').value = '';
+  document.getElementById('puntos-cliente').innerHTML = '';
 }
 
 /* ══════════ 6. FACTURAR — carrito ══════════ */
@@ -606,7 +673,7 @@ function pintarTotales(){
 /* ══════════ 7. CONFIRMAR PEDIDO ══════════ */
 async function confirmarPedido(){
   if(!CLIENTE){ aviso('Falta elegir la clienta.', true); return; }
-  if(!CARRITO.length){ aviso('El pedido no tiene productos.', true); return; }
+  if(!CARRITO.length && !CANJES.length){ aviso('El pedido no tiene productos.', true); return; }
 
   const b = document.getElementById('btn-confirmar');
   b.disabled = true; b.textContent = 'Guardando…';
@@ -620,7 +687,8 @@ async function confirmarPedido(){
     p_valor_tarjeta: t.tarj,
     p_mensaje_tarjeta: document.getElementById('i-tarjeta-msg').value || null,
     p_metodo_pago: document.getElementById('i-pago').value,
-    p_notas: document.getElementById('i-notas').value || null
+    p_notas: document.getElementById('i-notas').value || null,
+    p_canjes: CANJES.map(c=>({ producto_id:c.producto_id }))
   });
 
   b.disabled = false; b.textContent = 'Confirmar pedido';
@@ -635,12 +703,16 @@ async function confirmarPedido(){
     num: data.num_factura, id: data.factura_id, total: data.total,
     cliente: CLIENTE, items: itemsPDF, ...t,
     mensaje_tarjeta: document.getElementById('i-tarjeta-msg').value,
-    pago: document.getElementById('i-pago').value, fecha: hoy(), pdf_url: null
+    pago: document.getElementById('i-pago').value, fecha: hoy(), pdf_url: null,
+    canjes: CANJES.slice(),
+    puntos_ganados: data.puntos_ganados, puntos_usados: data.puntos_usados, puntos_saldo: data.puntos_saldo
   };
 
   document.getElementById('ok-num').textContent = ULTIMA.num;
   document.getElementById('ok-total').textContent = fmt(ULTIMA.total);
-  document.getElementById('ok-cliente').textContent = 'para ' + CLIENTE.nombre;
+  document.getElementById('ok-cliente').innerHTML = 'para ' + esc(CLIENTE.nombre) +
+    `<br><span style="font-size:13px;color:var(--brass)">+${data.puntos_ganados} puntos · ${data.puntos_saldo} acumulados</span>` +
+    (data.puntos_usados ? `<br><span style="font-size:13px;color:var(--sage)">🎁 canjeó ${data.puntos_usados} puntos</span>` : '');
   document.getElementById('fact-form').classList.add('hidden');
   document.getElementById('fact-listo').classList.remove('hidden');
   window.scrollTo(0,0);
@@ -650,7 +722,7 @@ async function confirmarPedido(){
 }
 
 function nuevaFactura(){
-  CARRITO = []; ULTIMA = null; quitarCliente();
+  CARRITO = []; ULTIMA = null; CANJES = []; quitarCliente();
   ['i-descuento','i-envio','i-tarjeta-val'].forEach(id=>document.getElementById(id).value = 0);
   document.getElementById('i-tarjeta-msg').value = '';
   document.getElementById('i-notas').value = '';
@@ -737,8 +809,23 @@ function construirPDF(f){
     d.text(d.splitTextToSize(f.mensaje_tarjeta, 100), M, y+6);
   }
 
+  // Bloque de puntos de fidelización
+  if(f.puntos_ganados !== undefined && (f.puntos_ganados > 0 || f.puntos_saldo > 0)){
+    y += 18;
+    d.setDrawColor(185,138,60); d.setFillColor(251,244,228);
+    d.roundedRect(M, y-4, W-2*M, 18, 2, 2, 'FD');
+    d.setFont('helvetica','bold'); d.setFontSize(10); d.setTextColor(140,100,30);
+    d.text('EVAN Puntos', M+4, y+4);
+    d.setFont('helvetica','normal'); d.setFontSize(9); d.setTextColor(90,75,50);
+    let txt = 'Ganaste ' + f.puntos_ganados + ' puntos';
+    if(f.puntos_usados > 0) txt += ' · canjeaste ' + f.puntos_usados;
+    d.text(txt, M+4, y+9.5);
+    d.setFont('helvetica','bold');
+    d.text('Tienes ' + f.puntos_saldo + ' puntos acumulados', W-M-4, y+7, {align:'right'});
+  }
+
   d.setFontSize(8); d.setTextColor(150,140,145);
-  d.text(CONFIG.pie_factura || 'Gracias por tu compra.', W/2, 282, {align:'center'});
+  d.text(CONFIG.pie_factura || 'Gracias por tu compra.', W/2, 288, {align:'center'});
   return d;
 }
 function descargarPDF(){
@@ -771,6 +858,9 @@ function textoPedido(){
   if(ULTIMA.env)  l.push(`Envío: ${fmt(ULTIMA.env)}`);
   if(ULTIMA.tarj) l.push(`Tarjeta personalizada: ${fmt(ULTIMA.tarj)}`);
   l.push('', `Total: ${fmt(ULTIMA.total)}`, `Pago: ${ULTIMA.pago}`);
+  if(ULTIMA.puntos_ganados !== undefined && ULTIMA.puntos_saldo !== undefined){
+    l.push('', `⭐ Ganaste ${ULTIMA.puntos_ganados} puntos · Tienes ${ULTIMA.puntos_saldo} acumulados`);
+  }
   if(ULTIMA.pdf_url) l.push('', `Tu factura: ${ULTIMA.pdf_url}`);
   return l.join('\n');
 }
@@ -883,9 +973,18 @@ async function crearProducto(){
     p_referencia: 'MANUAL'
   });
   if(error){ aviso(error.message, true); return; }
+  // guardar lo canjeable aparte (cargar_producto no lo maneja)
+  const canjeable = document.getElementById('p-canjeable').checked;
+  const pts = Number(document.getElementById('p-precio-pts').value)||null;
+  if(canjeable && pts){
+    await sb.from('productos').update({ canjeable:true, precio_puntos:pts }).eq('codigo', codigo);
+  }
   aviso(nombre + ' guardado');
   ['p-codigo','p-nombre'].forEach(id=>document.getElementById(id).value = '');
   ['p-costo','p-precio','p-cant'].forEach(id=>document.getElementById(id).value = 0);
+  document.getElementById('p-canjeable').checked = false;
+  document.getElementById('p-precio-pts').value = '';
+  document.getElementById('p-pts-wrap').classList.add('hidden');
   await cargarProductos();
 }
 
@@ -1117,11 +1216,42 @@ async function verFactura(f){
     </tbody></table>
     <div class="tot grand"><span>Total</span><span class="mono">${fmt(f.total)}</span></div>
     <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
-      ${f.pdf_url?`<a href="${esc(f.pdf_url)}" target="_blank" class="btn" style="text-decoration:none;flex:1;text-align:center">Abrir PDF original</a>`:''}
+      ${f.pdf_url?`<a href="${esc(f.pdf_url)}" target="_blank" class="btn" style="text-decoration:none;flex:1;text-align:center">Abrir PDF original</a>`
+                 :`<button class="btn" style="flex:1" onclick='regenerarPDF(${JSON.stringify(f).replace(/'/g,"&#39;")})'>Regenerar PDF</button>`}
       <button class="btn-2" onclick="reenviarWA(${JSON.stringify(f).replace(/'/g,"&#39;")})">WhatsApp</button>
       <button class="btn-2" onclick="cerrarModal()">Cerrar</button>
     </div>
   </div></div>`;
+}
+async function regenerarPDF(f){
+  aviso('Regenerando PDF…');
+  // reconstruir la estructura que espera construirPDF a partir de la factura y su detalle
+  const { data:det } = await sb.from('factura_detalle').select('*').eq('factura_id', f.id);
+  let cli = { nombre:f.nombre_cliente, cedula:'', telefono:'', correo:'' };
+  if(f.cliente_id){
+    const { data:c } = await sb.from('clientes').select('*').eq('id', f.cliente_id).maybeSingle();
+    if(c) cli = c;
+  }
+  const datos = {
+    num: f.num_factura, id: f.id, fecha: new Date(f.fecha).toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'}),
+    cliente: cli, pago: f.metodo_pago,
+    items: (det||[]).map(d=>({ nombre:d.nombre_producto, codigo:d.codigo, cantidad:d.cantidad,
+                               precio_unitario:d.precio_unitario, componentes_txt:d.componentes_txt })),
+    sub: f.subtotal_productos, desc: f.descuento, env: f.costo_envio, tarj: f.valor_tarjeta,
+    total: f.total, mensaje_tarjeta: f.mensaje_tarjeta,
+    puntos_ganados: f.puntos_ganados, puntos_usados: f.puntos_usados, puntos_saldo: f.puntos_saldo
+  };
+  try{
+    const blob = construirPDF(datos).output('blob');
+    const ruta = f.num_factura + '.pdf';
+    const { error } = await sb.storage.from('facturas').upload(ruta, blob, { contentType:'application/pdf', upsert:true });
+    if(error) throw error;
+    const { data:pub } = sb.storage.from('facturas').getPublicUrl(ruta);
+    await sb.from('facturas').update({ pdf_url: pub.publicUrl }).eq('id', f.id);
+    aviso('PDF regenerado');
+    cerrarModal(); buscarFacturas();
+    window.open(pub.publicUrl, '_blank');
+  }catch(e){ aviso('No se pudo regenerar: ' + e.message, true); }
 }
 async function reenviarWA(f){
   const { data:cli } = await sb.from('clientes').select('telefono').eq('id', f.cliente_id).maybeSingle();
@@ -1130,6 +1260,58 @@ async function reenviarWA(f){
   const msg = `Hola ${f.nombre_cliente}, aquí está tu factura ${f.num_factura} de EVAN accesorios.\nTotal: ${fmt(f.total)}` +
     (f.pdf_url?`\n${f.pdf_url}`:'');
   window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, '_blank');
+}
+
+/* ══════════ 11d. DASHBOARD DE PUNTOS ══════════ */
+async function cargarPuntos(){
+  const { data, error } = await sb.rpc('ranking_puntos');
+  if(error){ aviso(error.message, true); return; }
+  const cli = data || [];
+
+  const totalPts = cli.reduce((a,c)=>a + (c.puntos||0), 0);
+  const conPuntos = cli.filter(c=>c.puntos > 0).length;
+
+  // resumen del mes: puntos otorgados/canjeados y costo de fidelización
+  const iniMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const { data:mov } = await sb.from('movimientos_puntos').select('tipo,puntos').gte('fecha', iniMes.toISOString());
+  const otorgados = (mov||[]).filter(m=>m.tipo==='GANA').reduce((a,m)=>a+m.puntos,0);
+  const canjeados = Math.abs((mov||[]).filter(m=>m.tipo==='CANJE').reduce((a,m)=>a+m.puntos,0));
+  const { data:canjesMes } = await sb.from('factura_detalle')
+    .select('costo_unitario,fecha').eq('es_canje', true).gte('fecha', iniMes.toISOString());
+  const costoFidel = (canjesMes||[]).reduce((a,c)=>a+Number(c.costo_unitario||0),0);
+
+  document.getElementById('pts-kpis').innerHTML = `
+    <div class="kpi"><div class="l">Clientas con puntos</div><div class="v">${conPuntos}</div><div class="d">de ${cli.length} en total</div></div>
+    <div class="kpi"><div class="l">Puntos en circulación</div><div class="v">${num(totalPts)}</div></div>
+    <div class="kpi"><div class="l">Otorgados este mes</div><div class="v">${num(otorgados)}</div><div class="d">${canjeados} canjeados</div></div>
+    ${esAdmin()?`<div class="kpi"><div class="l">Costo fidelización</div><div class="v">${fmt(costoFidel)}</div><div class="d">premios entregados este mes</div></div>`:''}`;
+
+  // cumpleaños próximos (30 días)
+  const hoyD = new Date(); const en30 = new Date(); en30.setDate(en30.getDate()+30);
+  const cumples = cli.filter(c=>c.cumple).map(c=>{
+    const [,mm,dd] = c.cumple.split('-').map(Number);
+    let prox = new Date(hoyD.getFullYear(), mm-1, dd);
+    if(prox < hoyD){ prox.setFullYear(hoyD.getFullYear()+1); }
+    return { ...c, prox };
+  }).filter(c=>c.prox <= en30).sort((a,b)=>a.prox-b.prox);
+  document.getElementById('pts-cumple').innerHTML = cumples.length
+    ? cumples.map(c=>`<div class="chip" style="margin-bottom:6px"><div><b>${esc(c.nombre)}</b>
+        <small>${c.prox.toLocaleDateString('es-CO',{day:'numeric',month:'long'})} · ${c.puntos} puntos</small></div>
+        ${c.telefono?`<a class="btn-2 btn-sm" style="text-decoration:none" target="_blank" href="https://wa.me/${telWhatsApp(c.telefono)}?text=${encodeURIComponent('¡Feliz cumpleaños '+c.nombre+'! 🎉 En EVAN queremos consentirte...')}">Felicitar</a>`:''}
+      </div>`).join('')
+    : '<div class="empty-state">Ninguna clienta cumple años en los próximos 30 días.</div>';
+
+  const t = document.getElementById('tabla-ranking');
+  t.innerHTML = `<thead><tr><th>#</th><th>Clienta</th><th class="right">Puntos</th><th class="right hide-sm">Compras</th><th class="right">Total gastado</th><th class="hide-sm">Última</th><th></th></tr></thead><tbody>` +
+    cli.slice(0,50).map((c,i)=>`<tr>
+      <td class="mono muted">${i+1}</td>
+      <td><b>${esc(c.nombre)}</b>${c.telefono?`<br><span class="muted mono" style="font-size:11px">${esc(c.telefono)}</span>`:''}</td>
+      <td class="right"><span class="tag ${c.puntos>0?'t-ok':''}" style="font-size:13px">${c.puntos}</span></td>
+      <td class="right mono hide-sm">${c.num_compras}</td>
+      <td class="right mono">${fmt(c.total_comprado)}</td>
+      <td class="hide-sm muted" style="font-size:12px">${c.ultima_compra?new Date(c.ultima_compra).toLocaleDateString('es-CO'):'—'}</td>
+      <td class="right">${c.telefono?`<a class="btn-3" style="text-decoration:none" target="_blank" href="https://wa.me/${telWhatsApp(c.telefono)}">WhatsApp</a>`:''}</td>
+    </tr>`).join('') + '</tbody>';
 }
 
 /* ══════════ 12. INVENTARIO ══════════ */
@@ -1161,7 +1343,8 @@ function pintarInventario(){
         ${esAdmin()?`<td class="right mono">${num(p.costo)}</td>`:''}
         <td class="right mono">${num(p.precio_venta)}</td>
         <td class="right"><span class="tag ${est}">${p.stock_actual}</span></td>
-        <td class="right"><button class="btn-2 btn-sm" onclick="modalMovimiento('${p.id}')">Mover</button></td>
+        <td class="right"><button class="btn-2 btn-sm" onclick="modalMovimiento('${p.id}')">Mover</button>
+        <button class="btn-3 btn-sm" onclick="modalEditarProducto('${p.id}')">Editar</button></td>
       </tr>`;
     }).join('') + '</tbody>';
 }
@@ -1187,6 +1370,45 @@ function ayudaMov(){
   const t = document.getElementById('m-tipo').value;
   document.getElementById('m-label').textContent =
     t === 'ENTRADA' ? 'Unidades que entran' : 'Unidades contadas físicamente';
+}
+function modalEditarProducto(id){
+  const p = PRODUCTOS.find(x=>x.id===id);
+  document.getElementById('modal-host').innerHTML = `
+  <div class="overlay" onclick="if(event.target===this)cerrarModal()"><div class="modal">
+    <h3>Editar ${esc(p.nombre)}</h3>
+    <p class="muted" style="margin-top:-10px;margin-bottom:16px"><span class="mono">${esc(p.codigo)}</span></p>
+    <div class="field"><label>Nombre</label><input id="ep-nombre" value="${esc(p.nombre)}"></div>
+    <div class="row">
+      ${esAdmin()?`<div class="field"><label>Costo</label><input id="ep-costo" type="number" min="0" step="500" value="${p.costo}"></div>`:''}
+      <div class="field"><label>Precio de venta</label><input id="ep-precio" type="number" min="0" step="500" value="${p.precio_venta}"></div>
+      <div class="field"><label>Stock mínimo</label><input id="ep-min" type="number" min="0" value="${p.stock_minimo}"></div>
+    </div>
+    <div class="field">
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-size:14px;letter-spacing:0">
+        <input type="checkbox" id="ep-canjeable" ${p.canjeable?'checked':''} style="width:auto" onchange="document.getElementById('ep-pts').classList.toggle('hidden',!this.checked)"> Canjeable por puntos
+      </label>
+    </div>
+    <div class="field ${p.canjeable?'':'hidden'}" id="ep-pts"><label>Precio en puntos</label><input id="ep-precio-pts" type="number" min="1" value="${p.precio_puntos||''}" placeholder="25"></div>
+    <div style="display:flex;gap:10px"><button class="btn" style="flex:1" onclick="guardarEditarProducto('${id}')">Guardar</button>
+    <button class="btn-2" onclick="cerrarModal()">Cancelar</button></div>
+  </div></div>`;
+}
+async function guardarEditarProducto(id){
+  const upd = {
+    nombre: document.getElementById('ep-nombre').value.trim(),
+    precio_venta: Number(document.getElementById('ep-precio').value)||0,
+    stock_minimo: Number(document.getElementById('ep-min').value)||0,
+    canjeable: document.getElementById('ep-canjeable').checked,
+    precio_puntos: document.getElementById('ep-canjeable').checked ? (Number(document.getElementById('ep-precio-pts').value)||null) : null
+  };
+  const costoEl = document.getElementById('ep-costo');
+  if(costoEl) upd.costo = Number(costoEl.value)||0;
+  if(!upd.nombre){ aviso('El nombre no puede quedar vacío.', true); return; }
+  if(upd.canjeable && !upd.precio_puntos){ aviso('Ponle el precio en puntos del premio.', true); return; }
+  const { error } = await sb.from('productos').update(upd).eq('id', id);
+  if(error){ aviso(error.message, true); return; }
+  cerrarModal(); aviso('Producto actualizado');
+  await cargarProductos(); pintarInventario();
 }
 async function guardarMovimiento(id){
   const costo = document.getElementById('m-costo').value;
