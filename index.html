@@ -382,6 +382,30 @@ main{max-width:1080px;margin:0 auto;padding:22px 18px 80px}
 <section id="v-reportes" class="hidden">
   <h1 class="view-title">Reportes</h1>
   <p class="view-sub">Ventas del mes y comportamiento de los últimos 6 meses.</p>
+
+  <div class="card">
+    <h3>Reporte por fechas</h3>
+    <p class="sub">Elige un rango y genera un reporte de ventas y utilidades para imprimir o guardar en PDF.</p>
+    <div class="row" style="align-items:flex-end">
+      <div class="field" style="margin-bottom:0"><label>Desde</label><input id="rep-desde" type="date"></div>
+      <div class="field" style="margin-bottom:0"><label>Hasta</label><input id="rep-hasta" type="date"></div>
+      <div style="flex:none"><button class="btn" onclick="reporteRango()">Generar</button></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button class="btn-3 btn-sm" onclick="rangoRapido('mes')">Este mes</button>
+      <button class="btn-3 btn-sm" onclick="rangoRapido('mesant')">Mes pasado</button>
+      <button class="btn-3 btn-sm" onclick="rangoRapido('30')">Últimos 30 días</button>
+      <button class="btn-3 btn-sm" onclick="rangoRapido('anio')">Este año</button>
+    </div>
+    <div id="rep-rango-resultado" style="margin-top:18px"></div>
+  </div>
+
+  <div class="card">
+    <h3>Inventario actual</h3>
+    <p class="sub">Genera un listado del inventario existente para imprimir o guardar en PDF.</p>
+    <button class="btn-2" onclick="imprimirInventario()">Imprimir inventario actual</button>
+  </div>
+
   <div class="kpis" id="rep-kpis"></div>
   <div class="card"><h3>Más vendidos</h3><p class="sub">Últimos 6 meses, por unidades.</p><div style="overflow-x:auto"><table id="tabla-top"></table></div></div>
   <div class="card"><h3>Menos vendidos</h3><p class="sub">Incluye los que no han tenido ni una sola venta. Ahí está la plata quieta.</p><div style="overflow-x:auto"><table id="tabla-bottom"></table></div></div>
@@ -1425,6 +1449,144 @@ async function guardarMovimiento(id){
 }
 
 /* ══════════ 13. REPORTES ══════════ */
+
+// ---- Reporte por rango de fechas ----
+function rangoRapido(cual){
+  const hoy = new Date();
+  let d, h;
+  if(cual === 'mes'){ d = new Date(hoy.getFullYear(), hoy.getMonth(), 1); h = hoy; }
+  else if(cual === 'mesant'){ d = new Date(hoy.getFullYear(), hoy.getMonth()-1, 1); h = new Date(hoy.getFullYear(), hoy.getMonth(), 0); }
+  else if(cual === '30'){ d = new Date(hoy); d.setDate(d.getDate()-30); h = hoy; }
+  else if(cual === 'anio'){ d = new Date(hoy.getFullYear(), 0, 1); h = hoy; }
+  document.getElementById('rep-desde').value = d.toISOString().slice(0,10);
+  document.getElementById('rep-hasta').value = h.toISOString().slice(0,10);
+  reporteRango();
+}
+async function reporteRango(){
+  const desde = document.getElementById('rep-desde').value;
+  const hasta = document.getElementById('rep-hasta').value;
+  const cont = document.getElementById('rep-rango-resultado');
+  if(!desde || !hasta){ aviso('Elige las dos fechas.', true); return; }
+  if(desde > hasta){ aviso('La fecha "desde" no puede ser mayor que "hasta".', true); return; }
+
+  cont.innerHTML = '<p class="muted">Calculando…</p>';
+  const ini = new Date(desde + 'T00:00:00').toISOString();
+  const fin = new Date(hasta + 'T23:59:59').toISOString();
+
+  const { data:facs, error } = await sb.from('facturas').select('*')
+    .gte('fecha', ini).lte('fecha', fin).eq('estado','EMITIDA').order('fecha');
+  if(error){ aviso(error.message, true); cont.innerHTML=''; return; }
+
+  const { data:det } = await sb.from('factura_detalle')
+    .select('nombre_producto,codigo,cantidad,subtotal_linea,utilidad_linea,es_canje,fecha,facturas!inner(estado)')
+    .gte('fecha', ini).lte('fecha', fin).eq('facturas.estado','EMITIDA');
+
+  const suma = (a,k)=>a.reduce((s,x)=>s+Number(x[k]||0),0);
+  const ventas = suma(facs||[],'total');
+  const util   = suma(facs||[],'utilidad');
+  const envios = suma(facs||[],'costo_envio');
+  const unidades = (det||[]).filter(d=>!d.es_canje).reduce((a,d)=>a+d.cantidad,0);
+  const premios = (det||[]).filter(d=>d.es_canje).length;
+  const ticket = facs && facs.length ? ventas/facs.length : 0;
+
+  // top productos del rango
+  const porCod = {};
+  (det||[]).filter(d=>!d.es_canje).forEach(d=>{
+    (porCod[d.codigo] ??= { nombre:d.nombre_producto, u:0, v:0 });
+    porCod[d.codigo].u += d.cantidad; porCod[d.codigo].v += Number(d.subtotal_linea);
+  });
+  const top = Object.values(porCod).sort((a,b)=>b.u-a.u).slice(0,10);
+
+  const fmtF = s => new Date(s+'T00:00:00').toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
+  window._repRango = { desde, hasta, ventas, util, envios, unidades, premios, ticket, nfac:(facs||[]).length, top };
+
+  cont.innerHTML = `
+    <div class="kpis" style="margin-bottom:14px">
+      <div class="kpi"><div class="l">Ventas</div><div class="v">${fmt(ventas)}</div><div class="d">${(facs||[]).length} facturas</div></div>
+      ${esAdmin()?`<div class="kpi"><div class="l">Utilidad</div><div class="v">${fmt(util)}</div><div class="d">margen ${ventas?Math.round(util/ventas*100):0}%</div></div>`:''}
+      <div class="kpi"><div class="l">Unidades</div><div class="v">${num(unidades)}</div></div>
+      <div class="kpi"><div class="l">Ticket promedio</div><div class="v">${fmt(ticket)}</div></div>
+    </div>
+    <p class="muted" style="font-size:13px">Del ${fmtF(desde)} al ${fmtF(hasta)}${premios?` · ${premios} premios entregados`:''}</p>
+    <button class="btn" style="margin-top:10px" onclick="imprimirReporteRango()">Imprimir este reporte</button>`;
+}
+function imprimirReporteRango(){
+  const r = window._repRango;
+  if(!r) return;
+  const fmtF = s => new Date(s+'T00:00:00').toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
+  const filas = r.top.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(p.nombre)}</td><td class="r">${p.u}</td><td class="r">${fmt(p.v)}</td></tr>`).join('');
+  abrirImpresion(`
+    <h1>Reporte de ventas</h1>
+    <p class="sub">EVAN accesorios · del ${fmtF(r.desde)} al ${fmtF(r.hasta)}</p>
+    <div class="grid">
+      <div class="box"><span>Ventas</span><b>${fmt(r.ventas)}</b></div>
+      ${esAdmin()?`<div class="box"><span>Utilidad</span><b>${fmt(r.util)}</b></div>`:''}
+      <div class="box"><span>Facturas</span><b>${r.nfac}</b></div>
+      <div class="box"><span>Unidades</span><b>${num(r.unidades)}</b></div>
+      <div class="box"><span>Ticket promedio</span><b>${fmt(r.ticket)}</b></div>
+      ${esAdmin()?`<div class="box"><span>Margen</span><b>${r.ventas?Math.round(r.util/r.ventas*100):0}%</b></div>`:''}
+    </div>
+    <h2>Productos más vendidos</h2>
+    <table><thead><tr><th>#</th><th>Producto</th><th class="r">Unid.</th><th class="r">Venta</th></tr></thead><tbody>${filas||'<tr><td colspan="4">Sin ventas en el rango</td></tr>'}</tbody></table>
+  `);
+}
+
+// ---- Imprimir inventario actual ----
+async function imprimirInventario(){
+  await cargarProductos();
+  const fisicos = PRODUCTOS.filter(p=>!p.es_set).sort((a,b)=> (a.categoria||'').localeCompare(b.categoria||'') || a.nombre.localeCompare(b.nombre));
+  const unidades = fisicos.reduce((a,p)=>a+p.stock_actual,0);
+  const valorCosto = fisicos.reduce((a,p)=>a+p.stock_actual*Number(p.costo),0);
+  const valorVenta = fisicos.reduce((a,p)=>a+p.stock_actual*Number(p.precio_venta),0);
+  const filas = fisicos.map(p=>`<tr>
+    <td>${esc(p.codigo)}</td><td>${esc(p.nombre)}</td><td>${esc(p.categoria||'')}</td>
+    ${esAdmin()?`<td class="r">${fmt(p.costo)}</td>`:''}
+    <td class="r">${fmt(p.precio_venta)}</td>
+    <td class="r">${p.stock_actual}</td>
+    ${esAdmin()?`<td class="r">${fmt(p.stock_actual*Number(p.costo))}</td>`:''}
+  </tr>`).join('');
+  abrirImpresion(`
+    <h1>Inventario actual</h1>
+    <p class="sub">EVAN accesorios · ${new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'})}</p>
+    <div class="grid">
+      <div class="box"><span>Referencias</span><b>${fisicos.length}</b></div>
+      <div class="box"><span>Unidades</span><b>${num(unidades)}</b></div>
+      ${esAdmin()?`<div class="box"><span>Valor al costo</span><b>${fmt(valorCosto)}</b></div>`:''}
+      <div class="box"><span>Valor a precio venta</span><b>${fmt(valorVenta)}</b></div>
+    </div>
+    <table><thead><tr><th>Código</th><th>Producto</th><th>Categoría</th>${esAdmin()?'<th class="r">Costo</th>':''}<th class="r">Precio</th><th class="r">Stock</th>${esAdmin()?'<th class="r">Valor</th>':''}</tr></thead><tbody>${filas}</tbody></table>
+  `);
+}
+
+// ---- Ventana de impresión con estilo (sirve para imprimir o guardar como PDF) ----
+function abrirImpresion(contenido){
+  const w = window.open('', '_blank');
+  if(!w){ aviso('El navegador bloqueó la ventana. Permite las ventanas emergentes.', true); return; }
+  w.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>EVAN · reporte</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:Georgia,serif;color:#241B22;padding:32px;max-width:760px;margin:0 auto}
+      h1{font-size:26px;color:#8C2F44;margin-bottom:2px}
+      h2{font-size:17px;margin:24px 0 8px;color:#8C2F44}
+      .sub{color:#7A6F73;font-size:13px;margin-bottom:18px}
+      .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:14px 0}
+      .box{border:1px solid #E7DED7;border-radius:8px;padding:10px 12px}
+      .box span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7A6F73}
+      .box b{font-size:19px}
+      table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+      th{text-align:left;border-bottom:2px solid #241B22;padding:7px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+      td{padding:6px;border-bottom:1px solid #E7DED7}
+      .r{text-align:right}
+      @media print{ body{padding:0} button{display:none} }
+      .barra{text-align:center;margin-bottom:20px}
+      .barra button{font-family:Georgia,serif;background:#8C2F44;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;cursor:pointer}
+    </style></head><body>
+    <div class="barra"><button onclick="window.print()">Imprimir / Guardar PDF</button></div>
+    ${contenido}
+    </body></html>`);
+  w.document.close();
+}
+
 async function cargarReportes(){
   const ahora = new Date();
   const iniMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
